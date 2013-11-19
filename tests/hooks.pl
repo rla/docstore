@@ -12,10 +12,9 @@ docstore:ds_before_save(multi, In, [ a(1)|In ]):-
 docstore:ds_before_save(multi, In, [ b(2)|In ]):-
     \+ memberchk(b(_), In).    
     
-docstore:ds_before_remove(users, Doc):-
+docstore:ds_before_remove(users, Id):-
     \+ remove_check(_),
-    memberchk(name(Name), Doc),
-    assertz(remove_check(Name)).
+    assertz(remove_check(Id)).
 
 test(save_hook, [ setup(ds_open('test.db')),
         cleanup((ds_close, delete_file('test.db')))]):-
@@ -30,10 +29,10 @@ test(save_hook_multi, [ setup(ds_open('test.db')),
     memberchk(a(1), Doc),
     memberchk(b(2), Doc).
     
-test(remove_hook, [ setup(ds_open('test.db')),
+test(remove_hook, [ setup((retractall(remove_check(_)), ds_open('test.db'))),
         cleanup((ds_close, delete_file('test.db')))]):-
     ds_insert(users, [ name(john) ], Id),
     ds_remove(Id),
-    remove_check(john).
+    remove_check(Id).
 
 :- end_tests(docstore_hooks).

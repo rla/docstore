@@ -37,14 +37,14 @@ queries are supported (use find and calculate yourself).
 :- use_module(library(error)).
 :- use_module(library(debug)).
 
-%% ds_before_save(+Collection, +DocIn, -DocOut) is det.
+%% ds_before_save(+Collection, +DocIn, -DocOut) is nondet.
 %
 % Save hook for documents. Executed before
 % the document is saved.
 
 :- multifile(ds_before_save/3).
 
-%% ds_before_remove(+Collection, +Doc) is det.
+%% ds_before_remove(+Collection, +Id) is nondet.
 %
 % Remove hook for documents. Executed before
 % the document is removed.
@@ -120,6 +120,7 @@ load_term(retractall(Term)):-
 %% ds_insert(+Col, +Doc) is det.
 %
 % Inserts new document into the given collection.
+% Runs ds_before_save/2 hook.
     
 ds_insert(Col, Doc):-
     ds_insert(Col, Doc, _).
@@ -128,17 +129,18 @@ ds_insert(Col, Doc):-
 %
 % Inserts new document into the given collection.
 % Gives back the entity Id.
+% Runs ds_before_save/2 hook.
 
 ds_insert(Col, Doc, Id):-
     must_be(atom, Col),
     must_be(nonvar, Doc),
-    run_before_save_hooks(Col, Doc, Processed),
-    safely(insert_unsafe(Col, Processed, Id)).
+    safely(insert_unsafe(Col, Doc, Id)).
     
 insert_unsafe(Col, Doc, Id):-
+    run_before_save_hooks(Col, Doc, Processed),
     uuid(Id),
     run(assertz(col(Col, Id))),
-    maplist(assert_eav(Id), Doc).
+    maplist(assert_eav(Id), Processed).
 
 assert_eav(Id, Term):-
     prop_term(Name, Value, Term),
@@ -163,7 +165,12 @@ run_before_save_hooks(_, Doc, Doc).
 ds_update(Doc):-
     must_be(nonvar, Doc),
     memberchk('$id'(Id), Doc),
-    safely(update_props(Id, Doc)).
+    col(Col, Id),
+    safely(update_unsafe(Col, Id, Doc)).
+    
+update_unsafe(Col, Id, Doc):-
+    run_before_save_hooks(Col, Doc, Processed),
+    update_props(Id, Processed).
 
 update_props(_, []).
     
@@ -195,6 +202,7 @@ ds_upsert(Col, Doc, Id):-
 % Inserts property for the given document.
 % Fails if document already has the property
 % or the document does not exist.
+% FIXME run ds_before_save hook.
     
 ds_prop_insert(Id, Name, Value):-
     must_be(atom, Id),
@@ -208,6 +216,7 @@ ds_prop_insert(Id, Name, Value):-
 %
 % Removes property from the given
 % document.
+% FIXME run ds_before_save hook.
     
 ds_prop_remove(Id, Name):-
     must_be(atom, Id),
@@ -218,6 +227,7 @@ ds_prop_remove(Id, Name):-
 %
 % Updates property for the given document.
 % Fails if the document does not exist.
+% FIXME run ds_before_save hook.
     
 ds_prop_update(Id, Name, Value):-
     must_be(atom, Id),
@@ -237,6 +247,7 @@ prop_update_unsafe(Id, Name, Value):-
 % element to it.
 % Fails if document already has the property
 % or the document does not exist.
+% FIXME run ds_before_save hook.
     
 ds_prop_list_push(Id, Name, Value):-
     must_be(atom, Id),
@@ -253,6 +264,7 @@ ds_prop_list_push(Id, Name, Value):-
 % element to it.
 % Fails if document already has the property
 % or the document does not exist.
+% FIXME run ds_before_save hook.
     
 ds_prop_list_remove(Id, Name, Value):-
     must_be(atom, Id),
@@ -268,6 +280,7 @@ ds_prop_list_remove(Id, Name, Value):-
 % Treats property as number and increases it by 1.
 % Fails if document already has the property
 % or the document does not exist.
+% FIXME run ds_before_save hook.
     
 ds_prop_incr(Id, Name):-
     must_be(atom, Id),
@@ -282,6 +295,7 @@ ds_prop_incr(Id, Name):-
 % Treats property as number and decreases it by 1.
 % Fails if document already has the property
 % or the document does not exist.
+% FIXME run ds_before_save hook.
     
 ds_prop_decr(Id, Name):-
     must_be(atom, Id),
@@ -469,23 +483,22 @@ ds_collection(Id, Col):-
 
 ds_remove(Id):-
     must_be(atom, Id),
-    run_before_remove_hooks(Id),
     safely(remove_unsafe(Id)).
 
 remove_unsafe(Id):-
+    run_before_remove_hooks(Id),
     run(retractall(eav(Id, _, _))),
     run(retractall(col(_, Id))).
     
 run_before_remove_hooks(Id):-
     col(Col, Id), !,
-    doc(Id, Doc),
-    run_before_remove_hooks(Col, Doc).
+    run_before_remove_hooks(Col, Id).
     
 run_before_remove_hooks(_).
 
-run_before_remove_hooks(Col, Doc):-
-    ds_before_remove(Col, Doc), !,
-    run_before_remove_hooks(Col, Doc).
+run_before_remove_hooks(Col, Id):-
+    ds_before_remove(Col, Id), !,
+    run_before_remove_hooks(Col, Id).
     
 run_before_remove_hooks(_, _).
 
@@ -493,7 +506,7 @@ run_before_remove_hooks(_, _).
 %
 % Removes all documents from
 % the collection that match the
-% condition.
+% condition. Runs ds_before_remove/2 hooks.
     
 ds_remove(Col, Cond):-
     must_be(atom, Col),
@@ -505,7 +518,7 @@ ds_remove(Col, Cond):-
 % Removes all documents from
 % the given collection. Is equivalent
 % of running remove/1 for each document
-% in the collection.
+% in the collection. Runs ds_before_remove/2 hooks.
     
 ds_remove_col(Col):-
     ds_all_ids(Col, Ids),
