@@ -3,17 +3,21 @@
 
 :- dynamic(remove_check/1).
 
-docstore:ds_before_save(users, In, [ key(test)|In ]):-
-    \+ memberchk(key(_), In).
+:- ds_hook(users, before_save, add_key).
+
+add_key(In, [ key(test)|In ]).
+
+:- ds_hook(multi, before_save, add_a).
+
+:- ds_hook(multi, before_save, add_b).
+
+add_a(In, [ a(1)|In ]).
     
-docstore:ds_before_save(multi, In, [ a(1)|In ]):-
-    \+ memberchk(a(_), In).
-    
-docstore:ds_before_save(multi, In, [ b(2)|In ]):-
-    \+ memberchk(b(_), In).    
-    
-docstore:ds_before_remove(users, Id):-
-    \+ remove_check(_),
+add_b(In, [ b(2)|In ]).
+
+:- ds_hook(users, before_remove, remove_test).
+
+remove_test(Id):-
     assertz(remove_check(Id)).
 
 test(save_hook, [ setup(ds_open('test.db')),

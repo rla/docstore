@@ -1,6 +1,7 @@
 :- module(docstore, [
     ds_open/1,
     ds_close,
+    ds_hook/3,
     ds_insert/2,
     ds_insert/3,
     ds_update/1,
@@ -37,23 +38,13 @@ queries are supported (use find and calculate yourself).
 :- use_module(library(error)).
 :- use_module(library(debug)).
 
-%% ds_before_save(+Collection, +DocIn, -DocOut) is nondet.
-%
-% Save hook for documents. Executed before
-% the document is saved.
-
-:- multifile(ds_before_save/3).
-
-%% ds_before_remove(+Collection, +Id) is nondet.
-%
-% Remove hook for documents. Executed before
-% the document is removed.
-
-:- multifile(ds_before_remove/2).
+:- module_transparent(ds_hook/3).
 
 :- dynamic(col/2).
 :- dynamic(eav/3).
 :- dynamic(file/2).
+
+:- dynamic(hook/3).
 
 %% ds_open(+File) is det.
 %
@@ -104,19 +95,35 @@ loadall(_).
 
 load(Stream):-
     read(Stream, Term),
-    (Term = end_of_file ->
-        true
-    ;
-        load_term(Term),
-        load(Stream)
-    ).
+    (Term = end_of_file
+    ->  true
+    ;   load_term(Term),
+        load(Stream)).
     
 load_term(assertz(Term)):-
     assertz(Term).
     
 load_term(retractall(Term)):-
     retractall(Term).
+
+%% ds_hook(+Col, +Action, :Goal) is det.
+%
+% Adds new hook.
+% Action is one of: [ before_save, before_remove ].
     
+ds_hook(Col, Action, Mod:Goal):- !,
+    assert_hook(Col, Action, Mod:Goal).
+    
+ds_hook(Col, Action, Goal):-
+    context_module(Mod),
+    assert_hook(Col, Action, Mod:Goal).
+    
+assert_hook(Col, Action, Goal):-
+    hook(Col, Action, Goal), !.
+    
+assert_hook(Col, Action, Goal):-
+    assertz(hook(Col, Action, Goal)).
+
 %% ds_insert(+Col, +Doc) is det.
 %
 % Inserts new document into the given collection.
@@ -150,10 +157,15 @@ assert_eav(Id, Term):-
 % Executes save hooks.
     
 run_before_save_hooks(Col, Doc, Out):-
-    ds_before_save(Col, Doc, Tmp), !,
-    run_before_save_hooks(Col, Tmp, Out).
+    findall(Goal, hook(Col, before_save, Goal), Goals),
+    run_before_save_goals(Goals, Doc, Out).
+
+run_before_save_goals([ Goal|Goals ], Doc, Out):-
+    (call(Goal, Doc, Tmp)
+    ->  run_before_save_goals(Goals, Tmp, Out)
+    ;   run_before_save_goals(Goals, Doc, Out)).
     
-run_before_save_hooks(_, Doc, Doc).
+run_before_save_goals([], Doc, Doc).
 
 %% ds_update(+Doc) is semidet.
 %
@@ -183,7 +195,9 @@ update_prop(_, '$id', _):- !.
     
 update_prop(Id, Name, Value):-
     eav(Id, Name, Old), !,
-    (Value = Old -> true ; prop_update_unsafe(Id, Name, Value)).
+    (Value = Old
+    ->  true
+    ;   prop_update_unsafe(Id, Name, Value)).
     
 update_prop(Id, Name, Value):-
     run(assertz(eav(Id, Name, Value))).
@@ -195,7 +209,9 @@ update_prop(Id, Name, Value):-
 ds_upsert(Col, Doc, Id):-
     must_be(atom, Col),
     must_be(nonvar, Doc),
-    (memberchk('$id'(Id), Doc) -> ds_update(Doc) ; ds_insert(Col, Doc, Id)).
+    (memberchk('$id'(Id), Doc)
+    ->  ds_update(Doc)
+    ;   ds_insert(Col, Doc, Id)).
 
 %% ds_prop_insert(+Id, +Name, +Value) is semidet.
 %
@@ -493,14 +509,16 @@ remove_unsafe(Id):-
 run_before_remove_hooks(Id):-
     col(Col, Id), !,
     run_before_remove_hooks(Col, Id).
-    
-run_before_remove_hooks(_).
 
 run_before_remove_hooks(Col, Id):-
-    ds_before_remove(Col, Id), !,
-    run_before_remove_hooks(Col, Id).
+    findall(Goal, hook(Col, before_remove, Goal), Goals),
+    run_before_remove_goals(Goals, Id).
+
+run_before_remove_goals([ Goal|Goals ], Id):-
+    (call(Goal, Id) ; true),
+    run_before_remove_goals(Goals, Id).
     
-run_before_remove_hooks(_, _).
+run_before_remove_goals([], _).
 
 %% ds_remove(+Col, +Cond) is det.
 %
