@@ -44,12 +44,12 @@ queries are supported (use find and calculate yourself).
 
 :- multifile(ds_before_save/3).
 
-%% ds_before_remove(+Id) is det.
+%% ds_before_remove(+Collection, +Doc) is det.
 %
 % Remove hook for documents. Executed before
 % the document is removed.
 
-:- multifile(ds_before_remove/1).
+:- multifile(ds_before_remove/2).
 
 :- dynamic(col/2).
 :- dynamic(eav/3).
@@ -132,7 +132,7 @@ ds_insert(Col, Doc):-
 ds_insert(Col, Doc, Id):-
     must_be(atom, Col),
     must_be(nonvar, Doc),
-    run_save_hooks(Col, Doc, Processed),
+    run_before_save_hooks(Col, Doc, Processed),
     safely(insert_unsafe(Col, Processed, Id)).
     
 insert_unsafe(Col, Doc, Id):-
@@ -147,11 +147,11 @@ assert_eav(Id, Term):-
 
 % Executes save hooks.
     
-run_save_hooks(Col, Doc, Out):-
+run_before_save_hooks(Col, Doc, Out):-
     ds_before_save(Col, Doc, Tmp), !,
-    run_save_hooks(Col, Tmp, Out).
+    run_before_save_hooks(Col, Tmp, Out).
     
-run_save_hooks(_, Doc, Doc).
+run_before_save_hooks(_, Doc, Doc).
 
 %% ds_update(+Doc) is semidet.
 %
@@ -465,15 +465,29 @@ ds_collection(Id, Col):-
 %
 % Removes the given document.
 % Does nothing when the document
-% does not exist.
+% does not exist. Runs ds_before_remove/2 hooks.
 
 ds_remove(Id):-
     must_be(atom, Id),
+    run_before_remove_hooks(Id),
     safely(remove_unsafe(Id)).
 
 remove_unsafe(Id):-
     run(retractall(eav(Id, _, _))),
     run(retractall(col(_, Id))).
+    
+run_before_remove_hooks(Id):-
+    col(Col, Id), !,
+    doc(Id, Doc),
+    run_before_remove_hooks(Col, Doc).
+    
+run_before_remove_hooks(_).
+
+run_before_remove_hooks(Col, Doc):-
+    ds_before_remove(Col, Doc), !,
+    run_before_remove_hooks(Col, Doc).
+    
+run_before_remove_hooks(_, _).
 
 %% ds_remove(+Col, +Cond) is det.
 %
