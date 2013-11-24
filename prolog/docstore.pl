@@ -23,7 +23,8 @@
     ds_collection/2,
     ds_remove/1,
     ds_remove/2,
-    ds_remove_col/1
+    ds_remove_col/1,
+    ds_uuid/1
 ]).
 
 /** <module> Document-oriented database module.
