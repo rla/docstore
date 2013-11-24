@@ -145,7 +145,7 @@ ds_insert(Col, Doc, Id):-
     
 insert_unsafe(Col, Doc, Id):-
     run_before_save_hooks(Col, Doc, Processed),
-    uuid(Id),
+    ds_uuid(Id),
     run(assertz(col(Col, Id))),
     maplist(assert_eav(Id), Processed).
 
@@ -565,13 +565,13 @@ run(Goal):-
     flush_output(Stream),
     call(Goal).
     
-%% uuid(-Id) is det.
+%% ds_uuid(-Id) is det.
 %
 % Generates UUID version 4 identifier.
 % More info:
 % http://en.wikipedia.org/wiki/Universally_unique_identifier
 
-uuid(Id):-
+ds_uuid(Id):-
     uuid_pattern(Pat),
     maplist(fill, Pat),
     atom_chars(Id, Pat).
