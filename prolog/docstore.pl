@@ -565,8 +565,12 @@ run(Goal):-
     flush_output(Stream),
     call(Goal).
     
-% Generates UUID version 4 identifier.    
-    
+%% uuid(-Id) is det.
+%
+% Generates UUID version 4 identifier.
+% More info:
+% http://en.wikipedia.org/wiki/Universally_unique_identifier
+
 uuid(Id):-
     uuid_pattern(Pat),
     maplist(fill, Pat),
