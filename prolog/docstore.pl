@@ -1,6 +1,7 @@
 :- module(docstore, [
     ds_open/1,
     ds_close,
+    ds_hook/2,
     ds_hook/3,
     ds_insert/2,
     ds_insert/3,
@@ -39,6 +40,7 @@ queries are supported (use find and calculate yourself).
 :- use_module(library(error)).
 :- use_module(library(debug)).
 
+:- module_transparent(ds_hook/2).
 :- module_transparent(ds_hook/3).
 
 :- dynamic(col/2).
@@ -46,12 +48,15 @@ queries are supported (use find and calculate yourself).
 :- dynamic(file/2).
 
 :- dynamic(hook/3).
+:- dynamic(hook/2).
 
 %% ds_open(+File) is det.
 %
 % Opens the database file.
 % Throws error(docstore_is_open) when
 % the database is already open.
+%
+% Runs all open hooks.
 
 ds_open(_):-
     file(_, _), !,
@@ -61,21 +66,38 @@ ds_open(File):-
     must_be(atom, File),
     loadall(File),
     open(File, append, Stream, [encoding('utf8')]),
-    assertz(file(File, Stream)).
+    assertz(file(File, Stream)),
+    run_open_hooks.
+    
+run_open_hooks:-
+    findall(Goal, hook(open, Goal), Goals),
+    maplist(ignore, Goals).
 
-%% ds_close is semidet.
+%% ds_close is det.
 %
 % Closes the database. Removes in-memory data.
+% Runs close hooks. Hooks are ran before
+% the file is closed and data is purged from memory.
+%
+% Throws error(database_is_not_open) when
+% the database file is not open.
     
 ds_close:-
     safely(close_unsafe).
     
 close_unsafe:-
-    file(_, Stream),
-    close(Stream),    
+    (   file(_, Stream)
+    ->  true
+    ;   throw(error(database_is_not_open))),
+    run_close_hooks,
+    close(Stream),
     retractall(col(_, _)),
     retractall(eav(_, _, _)),
     retractall(file(_, _)).
+
+run_close_hooks:-
+    findall(Goal, hook(close, Goal), Goals),
+    maplist(ignore, Goals).
 
 % Loads database contents from
 % the given file if it exists.
@@ -106,6 +128,24 @@ load_term(assertz(Term)):-
     
 load_term(retractall(Term)):-
     retractall(Term).
+
+%% ds_hook(+Action, :Goal) is det.
+%
+% Registers new hook for open or
+% close action.
+    
+ds_hook(Action, Mod:Goal):- !,
+    assert_hook(Action, Mod:Goal).
+    
+ds_hook(Action, Goal):-
+    context_module(Mod),
+    assert_hook(Action, Mod:Goal).
+    
+assert_hook(Action, Goal):-
+    hook(Action, Goal), !.
+    
+assert_hook(Action, Goal):-
+    assertz(hook(Action, Goal)).
 
 %% ds_hook(+Col, +Action, :Goal) is det.
 %
