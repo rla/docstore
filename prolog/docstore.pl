@@ -1,6 +1,8 @@
 :- module(docstore, [
     ds_open/1,
     ds_close/0,
+    ds_snapshot/1,
+    ds_snapshot/0,
     ds_hook/2,
     ds_hook/3,
     ds_insert/2,
@@ -31,16 +33,12 @@
 /** <module> Document-oriented database
 
 Generic thread-safe store for key(value) terms.
-Writes are serialized using a mutex.
 */
 
 :- use_module(library(apply)).
 :- use_module(library(random)).
 :- use_module(library(error)).
 :- use_module(library(debug)).
-
-:- module_transparent(ds_hook/2).
-:- module_transparent(ds_hook/3).
 
 :- dynamic(col/2).
 :- dynamic(eav/3).
@@ -64,7 +62,9 @@ ds_open(_):-
 ds_open(File):-
     must_be(atom, File),
     loadall(File),
-    open(File, append, Stream, [encoding('utf8')]),
+    open(File, append, Stream, [
+        encoding('utf8'), lock(write)
+    ]),
     assertz(file(File, Stream)),
     run_open_hooks.
 
@@ -106,8 +106,7 @@ loadall(File):-
     setup_call_cleanup(
         open(File, read, Stream, [encoding('utf8')]),
         load(Stream),
-        close(Stream)
-    ).
+        close(Stream)).
 
 loadall(_).
 
@@ -130,41 +129,79 @@ load_term(assertz(Term)):-
 load_term(retractall(Term)):-
     retractall(Term).
 
+%% ds_snapshot(+File) is det.
+%
+% Writes the current database
+% snapshot into the file.
+
+ds_snapshot(File):-
+    safely(ds_snapshot_unsafe(File)).
+
+ds_snapshot_unsafe(File):-
+    setup_call_cleanup(
+        open(File, write, Stream, [encoding('utf8')]),
+        snapshot_dump(Stream),
+        close(Stream)).
+
+snapshot_dump(Stream):-
+    ((  col(Col, Id),
+        write_goal(Stream, assertz(col(Col, Id))),
+        fail
+    ) ; true),
+    ((  eav(Id, Name, Value),
+        write_goal(Stream, assertz(eav(Id, Name, Value))),
+        fail
+    ) ; true).
+
+%% ds_snapshot is det.
+%
+% Writes the snapshot of
+% current database contents into
+% its file. Implemented by running
+% ds_snapshot/1 into a file (with a random
+% name) and renaming the file using
+% rename_file/2.
+
+ds_snapshot:-
+    safely(ds_snapshot_unsafe).
+
+ds_snapshot_unsafe:-
+    file(Current, CurStream),
+    file_directory_name(Current, Dir),
+    ds_uuid(Name),
+    atomic_list_concat([Dir, Name], /, New),
+    ds_snapshot(New),
+    retractall(file(_, _)),
+    close(CurStream),
+    rename_file(New, Current),
+    open(Current, append, NewStream, [
+        encoding('utf8'), lock(write)
+    ]),
+    assertz(file(Current, NewStream)).
+
+:- meta_predicate(ds_hook(+, 0)).
+
 %% ds_hook(+Action, :Goal) is det.
 %
 % Registers new hook for open or
 % close action.
 
-ds_hook(Action, Mod:Goal):- !,
-    assert_hook(Action, Mod:Goal).
-
 ds_hook(Action, Goal):-
-    context_module(Mod),
-    assert_hook(Action, Mod:Goal).
+    (   hook(Action, Goal)
+    ->  true
+    ;   assertz(hook(Action, Goal))).
 
-assert_hook(Action, Goal):-
-    hook(Action, Goal), !.
-
-assert_hook(Action, Goal):-
-    assertz(hook(Action, Goal)).
+:- meta_predicate(ds_hook(+, +, :)).
 
 %% ds_hook(+Col, +Action, :Goal) is det.
 %
 % Adds new hook.
-% Action is one of: [ before_save, before_remove ].
-
-ds_hook(Col, Action, Mod:Goal):- !,
-    assert_hook(Col, Action, Mod:Goal).
+% Action is one of: [before_save, before_remove].
 
 ds_hook(Col, Action, Goal):-
-    context_module(Mod),
-    assert_hook(Col, Action, Mod:Goal).
-
-assert_hook(Col, Action, Goal):-
-    hook(Col, Action, Goal), !.
-
-assert_hook(Col, Action, Goal):-
-    assertz(hook(Col, Action, Goal)).
+    (   hook(Col, Action, Goal)
+    ->  true
+    ;   assertz(hook(Col, Action, Goal))).
 
 %% ds_insert(+Col, +Doc) is det.
 %
@@ -182,7 +219,7 @@ ds_insert(Col, Doc):-
 
 ds_insert(Col, Doc, Id):-
     must_be(atom, Col),
-    must_be(nonvar, Doc),
+    must_be(ground, Doc),
     safely(insert_unsafe(Col, Doc, Id)).
 
 insert_unsafe(Col, Doc, Id):-
@@ -584,12 +621,16 @@ ds_remove_col(Col):-
     ds_all_ids(Col, Ids),
     safely(maplist(remove_unsafe, Ids)).
 
+:- meta_predicate(safely(0)).
+
 % Runs the Goal with global mutex.
 % All modifications to the database
 % are run using it.
 
 safely(Goal):-
     with_mutex(db_store, Goal).
+
+:- meta_predicate(run(0)).
 
 % Helper to run and log the goal.
 % Throws error(database_not_open) when
@@ -601,13 +642,17 @@ run(_):-
 
 run(Goal):-
     file(_, Stream),
+    Goal = _:Local,
+    write_goal(Stream, Local),
+    flush_output(Stream),
+    call(Goal).
+
+write_goal(Stream, Goal):-
     write_term(Stream, Goal, [
         ignore_ops, quoted, dotlists(true)
     ]),
     write(Stream, '.'),
-    nl(Stream),
-    flush_output(Stream),
-    call(Goal).
+    nl(Stream).
 
 %% ds_uuid(-Id) is det.
 %

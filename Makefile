@@ -4,6 +4,7 @@ remote=packs@packs.rlaanemets.com:/usr/share/nginx/packs.rlaanemets.com/docstore
 
 test:
 	swipl -s tests/hooks -g run_tests -t halt
+	swipl -s tests/snapshot -g run_tests -t halt
 
 package: test
 	tar cvzf $(packfile) prolog tests pack.pl README.md
