@@ -1,38 +1,34 @@
 :- module(docstore, [
-    ds_open/1,
+    ds_open/1,       % +File
     ds_close/0,
-    ds_snapshot/1,
+    ds_snapshot/1,   % +File
     ds_snapshot/0,
-    ds_hook/2,
-    ds_hook/3,
-    ds_insert/2,
-    ds_insert/3,
-    ds_update/1,
-    ds_upsert/3,
-    ds_prop_insert/3,
-    ds_prop_remove/2,
-    ds_prop_update/3,
-    ds_prop_list_push/3,
-    ds_prop_list_remove/3,
-    ds_prop_incr/2,
-    ds_prop_decr/2,
-    ds_get/2,
-    ds_get/3,
-    ds_all/2,
-    ds_all/3,
-    ds_all_ids/2,
-    ds_find/3,
-    ds_find/4,
-    ds_collection/2,
-    ds_remove/1,
-    ds_remove/2,
-    ds_remove_col/1,
-    ds_uuid/1
+    ds_hook/2,       % +Action, :Goal
+    ds_hook/3,       % +Col, +Action, :Goal
+    ds_insert/1,     % +Dict
+    ds_insert/2,     % +Dict, -Id
+    ds_insert/3,     % +Col, +Dict, -Id
+    ds_update/1,     % +Dict
+    ds_upsert/1,     % +Dict
+    ds_upsert/2,     % +Dict, -Id
+    ds_upsert/3,     % +Col, +Dict, -Id
+    ds_get/2,        % +Id, -Dict
+    ds_get/3,        % +Id, +Keys, -Dict
+    ds_all/2,        % +Col, -List
+    ds_all/3,        % +Col, +Keys, -List
+    ds_all_ids/2,    % +Col, -List
+    ds_find/3,       % +Col, +Cond, -List
+    ds_find/4,       % +Col, +Cond, +Keys, -List
+    ds_collection/2, % ?Id, ?Col
+    ds_remove/1,     % +Id
+    ds_remove/2,     % +Col, Cond
+    ds_remove_col/1, % +Col
+    ds_uuid/1        % -Uuid
 ]).
 
 /** <module> Document-oriented database
 
-Generic thread-safe store for key(value) terms.
+Generic thread-safe store for dict terms.
 */
 
 :- use_module(library(apply)).
@@ -129,7 +125,7 @@ load_term(assertz(Term)):-
 load_term(retractall(Term)):-
     retractall(Term).
 
-%% ds_snapshot(+File) is det.
+%! ds_snapshot(+File) is det.
 %
 % Writes the current database
 % snapshot into the file.
@@ -153,7 +149,7 @@ snapshot_dump(Stream):-
         fail
     ) ; true).
 
-%% ds_snapshot is det.
+%! ds_snapshot is det.
 %
 % Writes the snapshot of
 % current database contents into
@@ -181,7 +177,7 @@ ds_snapshot_unsafe:-
 
 :- meta_predicate(ds_hook(+, 0)).
 
-%% ds_hook(+Action, :Goal) is det.
+%! ds_hook(+Action, :Goal) is det.
 %
 % Registers new hook for open or
 % close action.
@@ -193,7 +189,7 @@ ds_hook(Action, Goal):-
 
 :- meta_predicate(ds_hook(+, +, :)).
 
-%% ds_hook(+Col, +Action, :Goal) is det.
+%! ds_hook(+Col, +Action, :Goal) is det.
 %
 % Adds new hook.
 % Action is one of: [before_save, before_remove].
@@ -203,34 +199,42 @@ ds_hook(Col, Action, Goal):-
     ->  true
     ;   assertz(hook(Col, Action, Goal))).
 
-%% ds_insert(+Col, +Doc) is det.
+%! ds_insert(Doc) is det.
+%
+% Same as ds_insert/2 but the generated
+% ID is ignored.
+
+ds_insert(Doc):-
+    ds_insert(Doc, _).
+
+%! ds_insert(+Doc, -Id) is det.
+%
+% Same as ds_insert/3 but collection
+% name is taken from dict tag.
+
+ds_insert(Doc, Id):-
+    is_dict(Doc, Col),
+    ds_insert(Col, Doc, Id).
+
+%! ds_insert(+Col, +Doc, -Id) is det.
 %
 % Inserts new document into the given collection.
-% Runs ds_before_save/2 hook.
-
-ds_insert(Col, Doc):-
-    ds_insert(Col, Doc, _).
-
-%% ds_insert(+Col, +Doc, -Id) is det.
-%
-% Inserts new document into the given collection.
-% Gives back the entity Id.
-% Runs ds_before_save/2 hook.
+% Gives back the generated ID. Document must be a dict.
 
 ds_insert(Col, Doc, Id):-
     must_be(atom, Col),
-    must_be(ground, Doc),
+    must_be(nonvar, Doc),
     safely(insert_unsafe(Col, Doc, Id)).
 
 insert_unsafe(Col, Doc, Id):-
     run_before_save_hooks(Col, Doc, Processed),
     ds_uuid(Id),
+    dict_pairs(Processed, _, Pairs),
+    must_be(ground, Pairs),
     run(assertz(col(Col, Id))),
-    maplist(assert_eav(Id), Processed).
+    maplist(assert_eav(Id), Pairs).
 
-assert_eav(Id, Term):-
-    prop_term(Name, Value, Term),
-    must_be(nonvar, Value),
+assert_eav(Id, Name-Value):-
     run(assertz(eav(Id, Name, Value))).
 
 % Executes save hooks.
@@ -240,33 +244,35 @@ run_before_save_hooks(Col, Doc, Out):-
     run_before_save_goals(Goals, Doc, Out).
 
 run_before_save_goals([ Goal|Goals ], Doc, Out):-
-    (call(Goal, Doc, Tmp)
+    (   call(Goal, Doc, Tmp)
     ->  run_before_save_goals(Goals, Tmp, Out)
     ;   run_before_save_goals(Goals, Doc, Out)).
 
 run_before_save_goals([], Doc, Doc).
 
-%% ds_update(+Doc) is semidet.
+%! ds_update(+Doc) is semidet.
 %
 % Updates the given document. Only
 % changed properties are updated.
-% Fails if Doc contains no $id.
-% Ignores updates to '$id'.
+% Throws error if Doc contains no $id.
+% Ignores updates to '$id'. Runs
+% before_save hooks.
 
 ds_update(Doc):-
     must_be(nonvar, Doc),
-    memberchk('$id'(Id), Doc),
+    Id = Doc.'$id',
     col(Col, Id),
     safely(update_unsafe(Col, Id, Doc)).
 
 update_unsafe(Col, Id, Doc):-
     run_before_save_hooks(Col, Doc, Processed),
-    update_props(Id, Processed).
+    dict_pairs(Processed, _, Pairs),
+    must_be(ground, Pairs),
+    update_props(Id, Pairs).
 
 update_props(_, []).
 
-update_props(Id, [Prop|Props]):-
-    prop_term(Name, Value, Prop),
+update_props(Id, [Name-Value|Props]):-
     update_prop(Id, Name, Value),
     update_props(Id, Props).
 
@@ -274,133 +280,48 @@ update_prop(_, '$id', _):- !.
 
 update_prop(Id, Name, Value):-
     eav(Id, Name, Old), !,
-    (Value = Old
+    (   Value = Old
     ->  true
     ;   prop_update_unsafe(Id, Name, Value)).
 
 update_prop(Id, Name, Value):-
     run(assertz(eav(Id, Name, Value))).
 
-%% ds_upsert(+Col, +Doc, -Id) is det.
+prop_update_unsafe(Id, Name, Value):-
+    run(retractall(eav(Id, Name, _))),
+    run(assertz(eav(Id, Name, Value))).
+
+%! ds_upsert(+Doc) is det.
+%
+% Same as ds_upsert/2 but ignores
+% the generated id.
+
+ds_upsert(Doc):-
+    ds_upsert(Doc, _).
+
+%! ds_upsert(+Doc, -Id) is det.
+%
+% Same as ds_upsert/3 but uses dict tag
+% as collection name when inserting.
+
+ds_upsert(Doc, Id):-
+    must_be(nonvar, Doc),
+    (   get_dict('$id', Doc, Id)
+    ->  ds_update(Doc)
+    ;   ds_insert(Doc, Id)).
+
+%! ds_upsert(+Col, +Doc, -Id) is det.
 %
 % Inserts or updates the given document.
 
 ds_upsert(Col, Doc, Id):-
     must_be(atom, Col),
     must_be(nonvar, Doc),
-    (memberchk('$id'(Id), Doc)
+    (   get_dict('$id', Doc, Id)
     ->  ds_update(Doc)
     ;   ds_insert(Col, Doc, Id)).
 
-%% ds_prop_insert(+Id, +Name, +Value) is semidet.
-%
-% Inserts property for the given document.
-% Fails if document already has the property
-% or the document does not exist.
-% FIXME run ds_before_save hook.
-
-ds_prop_insert(Id, Name, Value):-
-    must_be(atom, Id),
-    must_be(atom, Name),
-    must_be(nonvar, Value),
-    col(_, Id),
-    \+ eav(Id, Name, Value),
-    safely(run(assertz(eav(Id, Name, Value)))).
-
-%% ds_prop_remove(+Id, +Name) is det.
-%
-% Removes property from the given
-% document.
-% FIXME run ds_before_save hook.
-
-ds_prop_remove(Id, Name):-
-    must_be(atom, Id),
-    must_be(atom, Name),
-    safely(run(retractall(eav(Id, Name, _)))).
-
-%% ds_prop_update(+Id, +Name, +Value) is semidet.
-%
-% Updates property for the given document.
-% Fails if the document does not exist.
-% FIXME run ds_before_save hook.
-
-ds_prop_update(Id, Name, Value):-
-    must_be(atom, Id),
-    must_be(atom, Name),
-    must_be(nonvar, Value),
-    col(_, Id),
-    \+ eav(Id, Name, Value),
-    safely(prop_update_unsafe(Id, Name, Value)).
-
-prop_update_unsafe(Id, Name, Value):-
-    run(retractall(eav(Id, Name, _))),
-    run(assertz(eav(Id, Name, Value))).
-
-%% ds_prop_list_push(+Id, +Name, +Value) is semidet.
-%
-% Treats property as list and appends new
-% element to it.
-% Fails if document already has the property
-% or the document does not exist.
-% FIXME run ds_before_save hook.
-
-ds_prop_list_push(Id, Name, Value):-
-    must_be(atom, Id),
-    must_be(atom, Name),
-    must_be(nonvar, Value),
-    col(_, Id),
-    eav(Id, Name, Old),
-    append(Old, [Value], New),
-    safely(prop_update_unsafe(Id, Name, New)).
-
-%% ds_prop_list_remove(+Id, +Name, +Value) is semidet.
-%
-% Treats property as list and removes the
-% element to it.
-% Fails if document already has the property
-% or the document does not exist.
-% FIXME run ds_before_save hook.
-
-ds_prop_list_remove(Id, Name, Value):-
-    must_be(atom, Id),
-    must_be(atom, Name),
-    must_be(nonvar, Value),
-    col(_, Id),
-    eav(Id, Name, Old),
-    delete(Old, Value, New),
-    safely(prop_update_unsafe(Id, Name, New)).
-
-%% prop_incr(+Id, +Name) is semidet.
-%
-% Treats property as number and increases it by 1.
-% Fails if document already has the property
-% or the document does not exist.
-% FIXME run ds_before_save hook.
-
-ds_prop_incr(Id, Name):-
-    must_be(atom, Id),
-    must_be(atom, Name),
-    col(_, Id),
-    eav(Id, Name, Old),
-    New is Old + 1,
-    safely(prop_update_unsafe(Id, Name, New)).
-
-%% ds_prop_decr(+Id, +Name) is semidet.
-%
-% Treats property as number and decreases it by 1.
-% Fails if document already has the property
-% or the document does not exist.
-% FIXME run ds_before_save hook.
-
-ds_prop_decr(Id, Name):-
-    must_be(atom, Id),
-    must_be(atom, Name),
-    col(_, Id),
-    eav(Id, Name, Old),
-    New is Old - 1,
-    safely(prop_update_unsafe(Id, Name, New)).
-
-%% ds_get(+Id, -Doc) is semidet.
+%! ds_get(+Id, -Doc) is semidet.
 %
 % Retrieves entry with the given id.
 
@@ -408,16 +329,16 @@ ds_get(Id, Doc):-
     must_be(atom, Id),
     doc(Id, Doc).
 
-%% ds_get(+Id, +Props, -Doc) is semidet.
+%! ds_get(+Id, +Keys, -Doc) is semidet.
 %
 % Retrieves entry with the given id.
 % Retrieves subset of properties.
 
-ds_get(Id, Props, Doc):-
+ds_get(Id, Keys, Doc):-
     must_be(atom, Id),
-    doc(Id, Props, Doc).
+    doc(Id, Keys, Doc).
 
-%% ds_all(+Col, -List) is det.
+%! ds_all(+Col, -List) is det.
 %
 % Finds list of all documents in the given
 % collection.
@@ -426,7 +347,7 @@ ds_all(Col, List):-
     must_be(atom, Col),
     findall(Doc, col_doc(Col, Doc), List).
 
-%% ds_all(+Col, +Props, -List) is det.
+%! ds_all(+Col, +Props, -List) is det.
 %
 % Finds list of all documents in the given
 % collection. Retrieves subset of properties.
@@ -443,7 +364,7 @@ col_doc(Col, Props, Doc):-
     col(Col, Id),
     doc(Id, Props, Doc).
 
-%% ds_all_ids(+Col, -List) is det.
+%! ds_all_ids(+Col, -List) is det.
 %
 % Retrieves the list of all document
 % IDs in the collection.
@@ -452,7 +373,7 @@ ds_all_ids(Col, List):-
     must_be(atom, Col),
     findall(Id, col(Col, Id), List).
 
-%% ds_find(+Col, +Cond, -List) is semidet.
+%! ds_find(+Col, +Cond, -List) is semidet.
 %
 % Finds collection entries that
 % satisfy cond.
@@ -461,7 +382,7 @@ ds_find(Col, Cond, List):-
     must_be(atom, Col),
     findall(Doc, cond_doc(Col, Cond, Doc), List).
 
-%% ds_find(+Col, +Cond, +Props, -List) is semidet.
+%! ds_find(+Col, +Cond, +Props, -List) is semidet.
 %
 % Finds collection entries that
 % satisfy cond. Retrieves only the given
@@ -473,15 +394,15 @@ ds_find(Col, Cond, Props, List):-
     must_be(list(atom), Props),
     findall(Doc, cond_doc(Col, Cond, Props, Doc), List).
 
-cond_doc(Col, Cond, Doc):-
+cond_doc(Col, Cond, Dict):-
     col(Col, Id),
     cond(Cond, Id),
-    doc(Id, Doc).
+    doc(Id, Dict).
 
-cond_doc(Col, Cond, Props, Doc):-
+cond_doc(Col, Cond, Keys, Dict):-
     col(Col, Id),
     cond(Cond, Id),
-    doc(Id, Props, Doc).
+    doc(Id, Keys, Dict).
 
 % Succeeds when condition is satisfied
 % on the given entity.
@@ -525,44 +446,46 @@ cond(';'(_, Right), Id):-
 
 % Finds document by ID.
 
-doc(Id, ['$id'(Id)|Doc]):-
-    doc_props(Id, Doc).
+doc(Id, Dict):-
+    col(Col, Id),
+    doc_kv_pairs(Id, Pairs),
+    dict_pairs(Dict, Col, ['$id'-Id|Pairs]).
 
 % Finds document by ID. Gives
 % back subset of its properties.
 
-doc(Id, Props, ['$id'(Id)|Doc]):-
-    doc_props(Id, Props, Doc).
+doc(Id, Keys, Dict):-
+    col(Col, Id),
+    doc_kv_pairs(Id, Keys, Pairs),
+    dict_pairs(Dict, Col, ['$id'-Id|Pairs]).
 
 % Finds document properties
 % with values.
 
-doc_props(Id, Doc):-
-    findall(Prop, doc_prop(Id, Prop), Doc).
+doc_kv_pairs(Id, Pairs):-
+    findall(Pair, doc_kv_pair(Id, Pair), Pairs).
 
 % Finds document properties
 % with values. Subset of properties.
 
-doc_props(Id, Props, Doc):-
-    Props = [_|_],
-    findall(Prop, (member(Name, Props), doc_prop(Id, Name, Prop)), Doc).
+doc_kv_pairs(Id, Keys, Pairs):-
+    Keys = [_|_],
+    findall(Pair, (
+        member(Key, Keys),
+        doc_kv_pair(Id, Key, Pair)
+    ), Pairs).
 
-doc_props(Id, Prop, Doc):-
-    atom(Prop),
-    doc_props(Id, [Prop], Doc).
+doc_kv_pairs(Id, Key, Doc):-
+    atom(Key),
+    doc_kv_pairs(Id, [Key], Doc).
 
-doc_prop(Id, Prop):-
-    eav(Id, Name, Value),
-    prop_term(Name, Value, Prop).
+doc_kv_pair(Id, Name-Value):-
+    eav(Id, Name, Value).
 
-doc_prop(Id, Name, Prop):-
-    eav(Id, Name, Value),
-    prop_term(Name, Value, Prop).
+doc_kv_pair(Id, Name, Name-Value):-
+    eav(Id, Name, Value).
 
-prop_term(Name, Value, Prop):-
-    Prop =.. [Name, Value].
-
-%% ds_collection(?Id, ?Col) is semidet.
+%! ds_collection(?Id, ?Col) is semidet.
 %
 % Finds which collection the document
 % belongs to.
@@ -570,7 +493,7 @@ prop_term(Name, Value, Prop):-
 ds_collection(Id, Col):-
     col(Col, Id).
 
-%% ds_remove(+Id) is det.
+%! ds_remove(+Id) is det.
 %
 % Removes the given document.
 % Does nothing when the document
@@ -599,7 +522,7 @@ run_before_remove_goals([ Goal|Goals ], Id):-
 
 run_before_remove_goals([], _).
 
-%% ds_remove(+Col, +Cond) is det.
+%! ds_remove(+Col, +Cond) is det.
 %
 % Removes all documents from
 % the collection that match the
@@ -610,7 +533,7 @@ ds_remove(Col, Cond):-
     findall(Id, (col(Col, Id), cond(Cond, Id)), Ids),
     safely(maplist(remove_unsafe, Ids)).
 
-%% ds_remove_col(Col) is det.
+%! ds_remove_col(Col) is det.
 %
 % Removes all documents from
 % the given collection. Is equivalent
@@ -654,7 +577,7 @@ write_goal(Stream, Goal):-
     write(Stream, '.'),
     nl(Stream).
 
-%% ds_uuid(-Id) is det.
+%! ds_uuid(-Id) is det.
 %
 % Generates UUID version 4 identifier.
 % More info:
