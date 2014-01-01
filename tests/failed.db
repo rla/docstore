@@ -1,0 +1,2 @@
+begin.
+assertz(col(test, '5b4d535d-a551-4e73-a25e-4b2f2c42ea91')).

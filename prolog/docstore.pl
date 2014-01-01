@@ -1,29 +1,36 @@
 :- module(docstore, [
-    ds_open/1,       % +File
+    ds_open/1,           % +File
     ds_close/0,
-    ds_snapshot/1,   % +File
+    ds_snapshot/1,       % +File
     ds_snapshot/0,
-    ds_hook/2,       % +Action, :Goal
-    ds_hook/3,       % +Col, +Action, :Goal
-    ds_insert/1,     % +Dict
-    ds_insert/2,     % +Dict, -Id
-    ds_insert/3,     % +Col, +Dict, -Id
-    ds_update/1,     % +Dict
-    ds_upsert/1,     % +Dict
-    ds_upsert/2,     % +Dict, -Id
-    ds_upsert/3,     % +Col, +Dict, -Id
-    ds_get/2,        % +Id, -Dict
-    ds_get/3,        % +Id, +Keys, -Dict
-    ds_all/2,        % +Col, -List
-    ds_all/3,        % +Col, +Keys, -List
-    ds_all_ids/2,    % +Col, -List
-    ds_find/3,       % +Col, +Cond, -List
-    ds_find/4,       % +Col, +Cond, +Keys, -List
-    ds_collection/2, % ?Id, ?Col
-    ds_remove/1,     % +Id
-    ds_remove/2,     % +Col, Cond
-    ds_remove_col/1, % +Col
-    ds_uuid/1        % -Uuid
+    ds_hook/2,           % +Action, :Goal
+    ds_hook/3,           % +Col, +Action, :Goal
+    ds_insert/1,         % +Dict
+    ds_insert/2,         % +Dict, -Id
+    ds_insert/3,         % +Col, +Dict, -Id
+    ds_update/1,         % +Dict
+    ds_upsert/1,         % +Dict
+    ds_upsert/2,         % +Dict, -Id
+    ds_upsert/3,         % +Col, +Dict, -Id
+    ds_get/2,            % +Id, -Dict
+    ds_get/3,            % +Id, +Keys, -Dict
+    ds_all/2,            % +Col, -List
+    ds_all/3,            % +Col, +Keys, -List
+    ds_all_ids/2,        % +Col, -List
+    ds_find/3,           % +Col, +Cond, -List
+    ds_find/4,           % +Col, +Cond, +Keys, -List
+    ds_collection/2,     % ?Id, ?Col
+    ds_remove/1,         % +Id
+    ds_remove/2,         % +Col, Cond
+    ds_remove_col/1,     % +Col
+    ds_remove_key/2,     % +Id, +Key
+    ds_tuples/3,         % +Col, +Keys, -Values
+    ds_col_add_key/3,    % +Col, +Key, +Default
+    ds_col_remove_key/2, % +Col, +Key
+    ds_col_rename/2,     % +Col, +ColNew
+    ds_col_rename_key/3, % +Col, +Key, +KeyNew
+    ds_transactional/1,  % +Goal
+    ds_uuid/1            % -Uuid
 ]).
 
 /** <module> Document-oriented database
@@ -48,21 +55,22 @@ Generic thread-safe store for dict terms.
 % Opens the database file.
 % Throws error(docstore_is_open) when
 % the database is already open.
-%
 % Runs all open hooks.
 
-ds_open(_):-
-    file(_, _), !,
-    throw(error(docstore_is_open)).
-
 ds_open(File):-
-    must_be(atom, File),
-    loadall(File),
-    open(File, append, Stream, [
-        encoding('utf8'), lock(write)
-    ]),
-    assertz(file(File, Stream)),
-    run_open_hooks.
+    safely(ds_open_unsafe(File)).
+
+ds_open_unsafe(File):-
+    debug(docstore, 'opening database ~p', [File]),
+    (   file(_, _)
+    ->  throw(error(docstore_is_open))
+    ;   must_be(atom, File),
+        loadall(File),
+        open(File, append, Stream, [
+            encoding('utf8'), lock(write)
+        ]),
+        assertz(file(File, Stream)),
+        run_open_hooks).
 
 run_open_hooks:-
     findall(Goal, hook(open, Goal), Goals),
@@ -73,7 +81,6 @@ run_open_hooks:-
 % Closes the database. Removes in-memory data.
 % Runs close hooks. Hooks are ran before
 % the file is closed and data is purged from memory.
-%
 % Throws error(database_is_not_open) when
 % the database file is not open.
 
@@ -88,17 +95,22 @@ close_unsafe:-
     close(Stream),
     retractall(col(_, _)),
     retractall(eav(_, _, _)),
-    retractall(file(_, _)).
+    retractall(file(_, _)),
+    debug(docstore, 'database is closed', []).
 
 run_close_hooks:-
     findall(Goal, hook(close, Goal), Goals),
     maplist(ignore, Goals).
+
+:- dynamic(load_tx_begin).
 
 % Loads database contents from
 % the given file if it exists.
 
 loadall(File):-
     exists_file(File), !,
+    debug(docstore, 'loading from file ~p', [File]),
+    retractall(load_tx_begin),
     setup_call_cleanup(
         open(File, read, Stream, [encoding('utf8')]),
         load(Stream),
@@ -115,15 +127,36 @@ load(Stream):-
         dotlists(true)
     ]),
     (Term = end_of_file
-    ->  true
+    ->  (   load_tx_begin
+        ->  retractall(col(_, _)),
+            retractall(eav(_, _, _)),
+            throw(error(failed_transaction))
+        ;   true)
     ;   load_term(Term),
         load(Stream)).
 
+load_term(begin):-
+    (   load_tx_begin
+    ->  throw(error(double_begin))
+    ;   assertz(load_tx_begin)).
+
+load_term(end):-
+    (   load_tx_begin
+    ->  retractall(load_tx_begin)
+    ;   throw(error(end_without_begin))).
+
 load_term(assertz(Term)):-
-    assertz(Term).
+    (   load_tx_begin
+    ->  assertz(Term)
+    ;   throw(error(no_tx_begin))).
 
 load_term(retractall(Term)):-
-    retractall(Term).
+    (   load_tx_begin
+    ->  retractall(Term)
+    ;   throw(error(no_tx_begin))).
+
+load_term(Term):-
+    throw(error(unknown_term(Term))).
 
 %! ds_snapshot(+File) is det.
 %
@@ -140,6 +173,7 @@ ds_snapshot_unsafe(File):-
         close(Stream)).
 
 snapshot_dump(Stream):-
+    write_goal(Stream, begin),
     ((  col(Col, Id),
         write_goal(Stream, assertz(col(Col, Id))),
         fail
@@ -147,7 +181,8 @@ snapshot_dump(Stream):-
     ((  eav(Id, Name, Value),
         write_goal(Stream, assertz(eav(Id, Name, Value))),
         fail
-    ) ; true).
+    ) ; true),
+    write_goal(Stream, end).
 
 %! ds_snapshot is det.
 %
@@ -191,8 +226,13 @@ ds_hook(Action, Goal):-
 
 %! ds_hook(+Col, +Action, :Goal) is det.
 %
-% Adds new hook.
+% Adds new save/remove hook.
 % Action is one of: [before_save, before_remove].
+% before_save hooks are executed before insert
+% and update. before_remove hooks are executed
+% before the document removal. During update only
+% the updated fields are passed to the before_save hooks.
+% Hooks are run in the current transaction.
 
 ds_hook(Col, Action, Goal):-
     (   hook(Col, Action, Goal)
@@ -220,11 +260,17 @@ ds_insert(Doc, Id):-
 %
 % Inserts new document into the given collection.
 % Gives back the generated ID. Document must be a dict.
+% All values in the dict must be ground.
+% Throws error(doc_has_id) when the document has the
+% $id key. Runs before_save hooks.
 
 ds_insert(Col, Doc, Id):-
     must_be(atom, Col),
     must_be(nonvar, Doc),
-    safely(insert_unsafe(Col, Doc, Id)).
+    (   get_dict('$id', Doc, _)
+    ->  throw(error(doc_has_id))
+    ;   true),
+    ds_transactional(insert_unsafe(Col, Doc, Id)).
 
 insert_unsafe(Col, Doc, Id):-
     run_before_save_hooks(Col, Doc, Processed),
@@ -243,26 +289,29 @@ run_before_save_hooks(Col, Doc, Out):-
     findall(Goal, hook(Col, before_save, Goal), Goals),
     run_before_save_goals(Goals, Doc, Out).
 
-run_before_save_goals([ Goal|Goals ], Doc, Out):-
+run_before_save_goals([Goal|Goals], Doc, Out):-
     (   call(Goal, Doc, Tmp)
     ->  run_before_save_goals(Goals, Tmp, Out)
     ;   run_before_save_goals(Goals, Doc, Out)).
 
 run_before_save_goals([], Doc, Doc).
 
-%! ds_update(+Doc) is semidet.
+%! ds_update(+Doc) is det.
 %
 % Updates the given document. Only
 % changed properties are updated.
-% Throws error if Doc contains no $id.
-% Ignores updates to '$id'. Runs
-% before_save hooks.
+% Throws error if Doc contains no `$id`.
+% Ignores updates to `$id`. Runs
+% `before_save` hooks. Throws error(no_such_doc(Id))
+% when no document with the given Id exists.
 
 ds_update(Doc):-
     must_be(nonvar, Doc),
-    Id = Doc.'$id',
-    col(Col, Id),
-    safely(update_unsafe(Col, Id, Doc)).
+    get_dict_ex('$id', Doc, Id),
+    (   col(Col, Id)
+    ->  true
+    ;   throw(error(no_such_doc(Id)))),
+    ds_transactional(update_unsafe(Col, Id, Doc)).
 
 update_unsafe(Col, Id, Doc):-
     run_before_save_hooks(Col, Doc, Processed),
@@ -324,6 +373,8 @@ ds_upsert(Col, Doc, Id):-
 %! ds_get(+Id, -Doc) is semidet.
 %
 % Retrieves entry with the given id.
+% Fails when the document with the given id
+% does not exist.
 
 ds_get(Id, Doc):-
     must_be(atom, Id),
@@ -332,7 +383,9 @@ ds_get(Id, Doc):-
 %! ds_get(+Id, +Keys, -Doc) is semidet.
 %
 % Retrieves entry with the given id.
-% Retrieves subset of properties.
+% Retrieves subset of properties. Fails
+% when the document with the given id does
+% not exist.
 
 ds_get(Id, Keys, Doc):-
     must_be(atom, Id),
@@ -347,22 +400,23 @@ ds_all(Col, List):-
     must_be(atom, Col),
     findall(Doc, col_doc(Col, Doc), List).
 
-%! ds_all(+Col, +Props, -List) is det.
+%! ds_all(+Col, +Keys, -List) is det.
 %
 % Finds list of all documents in the given
-% collection. Retrieves subset of properties.
+% collection. Retrieves subset of keys. Subset
+% will always contain '$id'.
 
-ds_all(Col, Props, List):-
+ds_all(Col, Keys, List):-
     must_be(atom, Col),
-    findall(Doc, col_doc(Col, Props, Doc), List).
+    findall(Doc, col_doc(Col, Keys, Doc), List).
 
 col_doc(Col, Doc):-
     col(Col, Id),
     doc(Id, Doc).
 
-col_doc(Col, Props, Doc):-
+col_doc(Col, Keys, Doc):-
     col(Col, Id),
-    doc(Id, Props, Doc).
+    doc(Id, Keys, Doc).
 
 %! ds_all_ids(+Col, -List) is det.
 %
@@ -376,23 +430,23 @@ ds_all_ids(Col, List):-
 %! ds_find(+Col, +Cond, -List) is semidet.
 %
 % Finds collection entries that
-% satisfy cond.
+% satisfy condition(s). Cond is one of:
+% `Key = Value`, `Key \= Value`, `Key > Value`,
+% `Key < Value`, `Key >= Value`, `Key =< Value`,
+% `member(Value, Key)`, `(Cond1, Cond2)`, `(Cond1 ; Cond2)`.
 
 ds_find(Col, Cond, List):-
     must_be(atom, Col),
     findall(Doc, cond_doc(Col, Cond, Doc), List).
 
-%! ds_find(+Col, +Cond, +Props, -List) is semidet.
+%! ds_find(+Col, +Cond, +Keys, -List) is semidet.
 %
-% Finds collection entries that
-% satisfy cond. Retrieves only the given
-% attributes. Entries that have one or more
-% attributes missing, are not retrieved.
+% Same as ds_find/3 but retrieves subset of keys.
 
-ds_find(Col, Cond, Props, List):-
+ds_find(Col, Cond, Keys, List):-
     must_be(atom, Col),
-    must_be(list(atom), Props),
-    findall(Doc, cond_doc(Col, Cond, Props, Doc), List).
+    must_be(list(atom), Keys),
+    findall(Doc, cond_doc(Col, Cond, Keys, Doc), List).
 
 cond_doc(Col, Cond, Dict):-
     col(Col, Id),
@@ -501,7 +555,8 @@ ds_collection(Id, Col):-
 
 ds_remove(Id):-
     must_be(atom, Id),
-    safely(remove_unsafe(Id)).
+    debug(docstore, 'removing document ~p', [Id]),
+    ds_transactional(remove_unsafe(Id)).
 
 remove_unsafe(Id):-
     run_before_remove_hooks(Id),
@@ -516,7 +571,8 @@ run_before_remove_hooks(Col, Id):-
     findall(Goal, hook(Col, before_remove, Goal), Goals),
     run_before_remove_goals(Goals, Id).
 
-run_before_remove_goals([ Goal|Goals ], Id):-
+run_before_remove_goals([Goal|Goals], Id):-
+    debug(docstore, 'running remove hook ~p', [Goal]),
     (call(Goal, Id) ; true),
     run_before_remove_goals(Goals, Id).
 
@@ -526,23 +582,164 @@ run_before_remove_goals([], _).
 %
 % Removes all documents from
 % the collection that match the
-% condition. Runs ds_before_remove/2 hooks.
+% condition. Runs `before_remove` hooks.
+% Cond expressions are same as in ds_find/3.
 
 ds_remove(Col, Cond):-
     must_be(atom, Col),
     findall(Id, (col(Col, Id), cond(Cond, Id)), Ids),
-    safely(maplist(remove_unsafe, Ids)).
+    ds_transactional(maplist(remove_unsafe, Ids)).
 
 %! ds_remove_col(Col) is det.
 %
 % Removes all documents from
 % the given collection. Is equivalent
 % of running remove/1 for each document
-% in the collection. Runs ds_before_remove/2 hooks.
+% in the collection. Runs `before_remove` hooks.
 
 ds_remove_col(Col):-
+    must_be(atom, Col),
+    debug(docstrore, 'removing collection ~p', [Col]),
     ds_all_ids(Col, Ids),
-    safely(maplist(remove_unsafe, Ids)).
+    ds_transactional(maplist(remove_unsafe, Ids)).
+
+%! ds_tuples(+Col, +Keys, -Values) is nondet.
+%
+% Provides backtrackable predicate-like view
+% of documents. It does not support built-in
+% indexing and therefore can be slow for purposes
+% where some values are restricted.
+
+ds_tuples(Col, Keys, Values):-
+    must_be(atom, Col),
+    must_be(list(atom), Keys),
+    col(Col, Id),
+    maplist(eav(Id), Keys, Values).
+
+%! ds_remove_key(+Id, +Key) is det.
+%
+% Removes key from the given document.
+% Does nothing when the document or entry
+% does not exist.
+
+ds_remove_key(Id, Key):-
+    must_be(atom, Id),
+    must_be(atom, Key),
+    ds_transactional(ds_remove_key_unsafe(Id, Key)).
+
+ds_remove_key_unsafe(Id, Key):-
+    run(retractall(eav(Id, Key, _))).
+
+%! ds_col_add_key(+Col, +Key, +Default) is det.
+%
+% Adds each document new key with the
+% default value. Runs `before_save` hooks.
+
+ds_col_add_key(Col, Key, Default):-
+    must_be(atom, Col),
+    must_be(atom, Key),
+    must_be(ground, Default),
+    ds_transactional(ds_col_add_key_unsafe(Col, Key, Default)).
+
+ds_col_add_key_unsafe(Col, Key, Default):-
+    ds_all_ids(Col, Ids),
+    maplist(ds_add_key_unsafe(Col, Key, Default), Ids).
+
+ds_add_key_unsafe(Col, Key, Default, Id):-
+    dict_create(Dict, Col, ['$id'-Id, Key-Default]),
+    update_unsafe(Col, Id, Dict).
+
+%! ds_col_remove_key(+Col, +Key) is det.
+%
+% Removes given key from the document
+% collection. Throws error(cannot_remove_id)
+% when key is `$id`. `save_before` hooks are
+% not executed.
+
+ds_col_remove_key(Col, Key):-
+    must_be(atom, Col),
+    must_be(atom, Key),
+    (   Key = '$id'
+    ->  throw(error(cannot_remove_id))
+    ;   true),
+    ds_transactional(ds_col_remove_key_unsafe(Col, Key)).
+
+ds_col_remove_key_unsafe(Col, Key):-
+    ds_all_ids(Col, Ids),
+    maplist(ds_col_remove_key_id(Key), Ids).
+
+ds_col_remove_key_id(Key, Id):-
+    run(retractall(eav(Id, Key, _))).
+
+%! ds_col_rename(+Col, +ColNew) is det.
+%
+% Rename collection. Relatively expensive
+% operation in terms of journal space. Needs
+% entry per document in the collection.
+
+ds_col_rename(Col, ColNew):-
+    must_be(atom, Col),
+    must_be(atom, ColNew),
+    ds_transactional(ds_col_rename_unsafe(Col, ColNew)).
+
+ds_col_rename_unsafe(Col, ColNew):-
+    ds_all_ids(Col, Ids),
+    run(retractall(col(Col, _))),
+    maplist(new_col_id(ColNew), Ids).
+
+new_col_id(Col, Id):-
+    run(assertz(col(Col, Id))).
+
+%! ds_col_rename_key(+Col, +Key, +KeyNew) is det.
+%
+% Renames a key in collection. Relatively expensive
+% operation in terms of journal space. Needs
+% 2 entries per document in the collection. Does
+% not run hooks.
+
+ds_col_rename_key(Col, Key, KeyNew):-
+    must_be(atom, Col),
+    must_be(atom, Key),
+    must_be(atom, KeyNew),
+    ds_transactional(ds_col_rename_key_unsafe(Col, Key, KeyNew)).
+
+ds_col_rename_key_unsafe(Col, Key, KeyNew):-
+    ds_all_ids(Col, Ids),
+    maplist(rename_col_key(Key, KeyNew), Ids).
+
+rename_col_key(Key, KeyNew, Id):-
+    (   eav(Id, Key, Value)
+    ->  run(retractall(eav(Id, Key, _))),
+        run(assertz(eav(Id, KeyNew, Value)))
+    ;   true).
+
+:- meta_predicate(ds_transactional(0)).
+
+%! ds_transactional(:Goal) is det.
+%
+% Runs given goal that modifies the database
+% contents in a transactional mode. When the goal
+% throws exception or fails, no changes by it
+% are persisted.
+
+ds_transactional(Goal):-
+    safely(with_tx_unsafe(Goal)).
+
+:- meta_predicate(with_tx_unsafe(0)).
+
+% Starts transaction. Catches exception
+% when exception happens. Rethrows the
+% exception.
+
+with_tx_unsafe(Goal):-
+    begin,
+    (   catch(Goal, Error, discard)
+    ->  (   nonvar(Error)
+        ->  debug(docstore, 'transactional run ended with exception', []),
+            throw(Error) % rethrow
+        ;   commit) % commit
+    ;   discard, % discard on fail
+        debug(docstore, 'transactional run failed', [])).
 
 :- meta_predicate(safely(0)).
 
@@ -553,29 +750,83 @@ ds_remove_col(Col):-
 safely(Goal):-
     with_mutex(db_store, Goal).
 
+:- dynamic(log/1).
+:- dynamic(tx/1).
+
 :- meta_predicate(run(0)).
 
 % Helper to run and log the goal.
 % Throws error(database_not_open) when
 % the database is not open.
 
-run(_):-
-    \+ file(_, _), !,
-    throw(error(docstore_not_open)).
-
 run(Goal):-
-    file(_, Stream),
-    Goal = _:Local,
-    write_goal(Stream, Local),
-    flush_output(Stream),
-    call(Goal).
+    (   tx(_)
+    ->  (   file(_, _)
+        ->  assertz(log(Goal))
+        ;   throw(error(docstore_not_open)))
+    ;   throw(error(transaction_not_active))).
+
+% Starts transaction. tx/1 is used for
+% detecting transaction nesting. During
+% transaction nesting, only the last commit
+% has effect.
+
+begin:-
+    (   tx(N)
+    ->  retractall(tx(_)),
+        N1 is N + 1,
+        debug(docstore, 'beginning fallthrough transaction (~p)', [N1]),
+        assertz(tx(N1))
+    ;   debug(docstore, 'beginning transaction (0)', []),
+        assertz(tx(0))).
+
+% Ends transaction. Has effect only
+% when it ends the outer transaction.
+
+commit:-
+    (   tx(0)
+    ->  debug(docstore, 'committing changes (0)', []),
+        file(_, Stream),
+        write_goal(Stream, begin),
+        ((  log(Goal),
+            Goal = _:Local,
+            write_goal(Stream, Local),
+            once(Goal),
+            fail
+        ) ; true),
+        write_goal(Stream, end),
+        flush_output(Stream),
+        retractall(log(_)),
+        retractall(tx(_))
+    ;   tx(N),
+        debug(docstore, 'fallthrough commit (~p)', [N]),
+        retractall(tx(_)),
+        N1 is N - 1,
+        assertz(tx(N1))).
 
 write_goal(Stream, Goal):-
     write_term(Stream, Goal, [
-        ignore_ops, quoted, dotlists(true)
-    ]),
-    write(Stream, '.'),
-    nl(Stream).
+        ignore_ops,
+        quoted,
+        dotlists(true),
+        nl(true),
+        fullstop(true)
+    ]).
+
+% Ends transaction by empting the
+% goal log. Has effect only when
+% it ends the outer transaction.
+
+discard:-
+    (   tx(0)
+    ->  debug(docstore, 'discarding changes', []),
+        retractall(log(_)),
+        retractall(tx(_))
+    ;   tx(N),
+        debug(docstore, 'fallthrough discard (~p)', [N]),
+        retractall(tx(_)),
+        N1 is N - 1,
+        assertz(tx(N1))).
 
 %! ds_uuid(-Id) is det.
 %
@@ -608,4 +859,3 @@ uuid_pattern(Pat):-
         -, '4', _, _, _,
         -, 'a', _, _, _,
         -, _, _, _, _, _, _, _, _, _, _, _, _].
-
