@@ -70,7 +70,7 @@ transaction, use `ds_transactional/1`. Example:
         fail.
 
 Running this through `ds_transactional/1` causes no changes made by
-`ds_insert` not to be persisted as the predicate ends with `fail`. Same would
+`ds_insert` to be persisted as the predicate ends with `fail`. Same would
 happen when the predicate threw an exception.
 
 ## Hooks
