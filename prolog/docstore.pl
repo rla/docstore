@@ -3,7 +3,6 @@
     ds_close/0,
     ds_snapshot/1,       % +File
     ds_snapshot/0,
-    ds_hook/2,           % +Action, :Goal
     ds_hook/3,           % +Col, +Action, :Goal
     ds_insert/1,         % +Dict
     ds_insert/2,         % +Dict, -Id
@@ -35,7 +34,8 @@
 
 /** <module> Document-oriented database
 
-Generic thread-safe store for dict terms.
+Generic thread-safe in-memory transactional
+store for dict terms.
 */
 
 :- use_module(library(apply)).
@@ -48,14 +48,12 @@ Generic thread-safe store for dict terms.
 :- dynamic(file/2).
 
 :- dynamic(hook/3).
-:- dynamic(hook/2).
 
 %! ds_open(+File) is det.
 %
 % Opens the database file.
 % Throws error(docstore_is_open) when
 % the database is already open.
-% Runs all open hooks.
 
 ds_open(File):-
     safely(ds_open_unsafe(File)).
@@ -65,16 +63,24 @@ ds_open_unsafe(File):-
     (   file(_, _)
     ->  throw(error(docstore_is_open))
     ;   must_be(atom, File),
-        loadall(File),
+        catch(loadall(File), Error, clean),
+        (   nonvar(Error)
+        ->  throw(Error)
+        ;   true),
         open(File, append, Stream, [
             encoding('utf8'), lock(write)
         ]),
-        assertz(file(File, Stream)),
-        run_open_hooks).
+        assertz(file(File, Stream))).
 
-run_open_hooks:-
-    findall(Goal, hook(open, Goal), Goals),
-    maplist(ignore, Goals).
+% Cleans current database state.
+% This is run on ds_close and during
+% loading when loading fails.
+
+clean:-
+    debug(docstore, 'cleaning database', []),
+    retractall(col(_, _)),
+    retractall(eav(_, _, _)),
+    retractall(file(_, _)).
 
 %! ds_close is det.
 %
@@ -91,16 +97,9 @@ close_unsafe:-
     (   file(_, Stream)
     ->  true
     ;   throw(error(database_is_not_open))),
-    run_close_hooks,
     close(Stream),
-    retractall(col(_, _)),
-    retractall(eav(_, _, _)),
-    retractall(file(_, _)),
+    clean,
     debug(docstore, 'database is closed', []).
-
-run_close_hooks:-
-    findall(Goal, hook(close, Goal), Goals),
-    maplist(ignore, Goals).
 
 :- dynamic(load_tx_begin).
 
@@ -210,29 +209,19 @@ ds_snapshot_unsafe:-
     ]),
     assertz(file(Current, NewStream)).
 
-:- meta_predicate(ds_hook(+, 0)).
-
-%! ds_hook(+Action, :Goal) is det.
-%
-% Registers new hook for open or
-% close action.
-
-ds_hook(Action, Goal):-
-    (   hook(Action, Goal)
-    ->  true
-    ;   assertz(hook(Action, Goal))).
-
 :- meta_predicate(ds_hook(+, +, :)).
 
 %! ds_hook(+Col, +Action, :Goal) is det.
 %
 % Adds new save/remove hook.
-% Action is one of: [before_save, before_remove].
+% Action is one of: `before_save`, `before_remove`.
 % before_save hooks are executed before insert
 % and update. before_remove hooks are executed
 % before the document removal. During update only
 % the updated fields are passed to the before_save hooks.
-% Hooks are run in the current transaction.
+% Hooks are run in the current transaction. Hooks that
+% fail or throw exception will end the transaction
+% and discard changes.
 
 ds_hook(Col, Action, Goal):-
     (   hook(Col, Action, Goal)
@@ -290,9 +279,10 @@ run_before_save_hooks(Col, Doc, Out):-
     run_before_save_goals(Goals, Doc, Out).
 
 run_before_save_goals([Goal|Goals], Doc, Out):-
+    debug(docstore, 'running save hook ~p', [Goal]),
     (   call(Goal, Doc, Tmp)
     ->  run_before_save_goals(Goals, Tmp, Out)
-    ;   run_before_save_goals(Goals, Doc, Out)).
+    ;   throw(error(before_save_hook_failed(Goal)))).
 
 run_before_save_goals([], Doc, Doc).
 
@@ -551,7 +541,7 @@ ds_collection(Id, Col):-
 %
 % Removes the given document.
 % Does nothing when the document
-% does not exist. Runs ds_before_remove/2 hooks.
+% does not exist. Runs `before_remove` hooks.
 
 ds_remove(Id):-
     must_be(atom, Id),
@@ -573,7 +563,9 @@ run_before_remove_hooks(Col, Id):-
 
 run_before_remove_goals([Goal|Goals], Id):-
     debug(docstore, 'running remove hook ~p', [Goal]),
-    (call(Goal, Id) ; true),
+    (   call(Goal, Id)
+    ->  true
+    ;   throw(error(before_remove_hook_fail(Goal)))),
     run_before_remove_goals(Goals, Id).
 
 run_before_remove_goals([], _).
@@ -594,7 +586,7 @@ ds_remove(Col, Cond):-
 %
 % Removes all documents from
 % the given collection. Is equivalent
-% of running remove/1 for each document
+% of running ds_remove/1 for each document
 % in the collection. Runs `before_remove` hooks.
 
 ds_remove_col(Col):-

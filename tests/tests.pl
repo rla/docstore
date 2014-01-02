@@ -5,9 +5,19 @@
 
 :- debug(docstore).
 
+% Do not allow to open database
+% with failed transaction or
+% broken write.
+
 test(failed):-
     catch((ds_open('tests/failed.db'), fail),
         error(failed_transaction), true).
+
+test(broken):-
+    catch((ds_open('tests/broken.db'), fail),
+        _, true),
+    catch((ds_insert(test{abc: 1}), fail),
+        error(docstore_not_open), true).
 
 test(insert_dict, [ setup(ds_open('test.db')),
         cleanup((ds_close, delete_file('test.db')))]):-
@@ -270,6 +280,34 @@ test(remove_hook_nest, [ setup((retractall(remove_nest_check(_)), ds_open('test.
     ds_open('test.db'),
     ds_all(nest, []),
     remove_nest_check(Id1).
+
+% Tests failing hook to discard transaction.
+
+:- ds_hook(test_fail_hook, before_save, test_fail_hook).
+
+test_fail_hook(_, _):-
+    fail.
+
+test(failing_hook, [ setup(ds_open('test.db')),
+        cleanup((ds_close, delete_file('test.db')))]):-
+    catch(ds_insert(test_fail_hook{name: abc}), _, true),
+    ds_close,
+    ds_open('test.db'),
+    ds_all(test_fail_hook, []).
+
+% Tests error-throwing hook to discard transaction.
+
+:- ds_hook(test_error_hook, before_save, test_error_hook).
+
+test_error_hook(_, _):-
+    throw(error(test_error)).
+
+test(failing_hook, [ setup(ds_open('test.db')),
+        cleanup((ds_close, delete_file('test.db')))]):-
+    catch(ds_insert(test_error_hook{name: abc}), _, true),
+    ds_close,
+    ds_open('test.db'),
+    ds_all(test_fail_hook, []).
 
 test(snapshot, [ setup(ds_open('snapshot.test.db')),
         cleanup((ds_close, delete_file('snapshot.test.db'),
