@@ -1,6 +1,6 @@
 # docstore
 
-Document-oriented transactional database for SWI-Prolog. Documents are represented
+Document-oriented transactional in-memory database for SWI-Prolog. Documents are represented
 using [dicts](http://www.swi-prolog.org/pldoc/man?section=dicts) and are organized
 into collections. Each document is assigned an unique identifier (`$id`) that can
 be later used to retrieve/update/remove the document.
@@ -19,19 +19,43 @@ Open database:
 
 Insert some data:
 
-    ? ds_insert(vehicle{year: 1926, make: chrysler, model: imperial}).
-    ? ds_insert(vehicle{year: 1953, make: chevrolet, model: corvette}).
-    ? ds_insert(vehicle{year: 1954, make: cadillac, model: fleetwood}).
+    ?- ds_insert(vehicle{year: 1926, make: chrysler, model: imperial}).
+    ?- ds_insert(vehicle{year: 1953, make: chevrolet, model: corvette}).
+    ?- ds_insert(vehicle{year: 1954, make: cadillac, model: fleetwood}).
 
 Query all documents in a collection:
 
     ?- ds_all(vehicle, List).
     List = [
-        vehicle{'$id':'6c1ad40e-dd18-46db-aae7-7ff9163cd4e3',
+        vehicle{'$id':'f3012622-cacb-4d7f-a22a-c36305274a80',
             make:chrysler, model:imperial, year:1926},
-        vehicle{'$id':'5fe585b5-65a9-4cc4-a037-a58a801c4f36',
+        vehicle{'$id':'23418d47-5835-41ff-a6b8-8748f3b2163e',
             make:chevrolet, model:corvette, year:1953},
-        vehicle{'$id':'de48f9e3-0953-4a48-a46a-9818eaf1c83f',
+        vehicle{'$id':'8c79f80f-d43e-4fad-a1bb-5fca23a195e0',
+            make:cadillac, model:fleetwood, year:1954}].
+
+Query by condition:
+
+    ?- ds_find(vehicle, year=1953, List).
+    List = [
+        vehicle{'$id':'23418d47-5835-41ff-a6b8-8748f3b2163e',
+            make:chevrolet, model:corvette, year:1953}].
+
+Update:
+
+    ?- ds_update(vehicle{'$id':'23418d47-5835-41ff-a6b8-8748f3b2163e', year: 1954}).
+    ?- ds_get('23418d47-5835-41ff-a6b8-8748f3b2163e', Vehicle).
+    Vehicle = vehicle{'$id':'23418d47-5835-41ff-a6b8-8748f3b2163e',
+        make:chevrolet, model:corvette, year:1954}.
+
+Remove:
+
+    ?- ds_remove('23418d47-5835-41ff-a6b8-8748f3b2163e').
+    ?- ds_all(vehicle, List).
+    List = [
+        vehicle{'$id':'f3012622-cacb-4d7f-a22a-c36305274a80',
+            make:chrysler, model:imperial, year:1926},
+        vehicle{'$id':'8c79f80f-d43e-4fad-a1bb-5fca23a195e0',
             make:cadillac, model:fleetwood, year:1954}].
 
 ## Transactions
@@ -49,14 +73,23 @@ Running this through `ds_transactional/1` causes no changes made by
 `ds_insert` not to be persisted as the predicate ends with `fail`. Same would
 happen when the predicate threw an exception.
 
+## Hooks
+
+Two kinds of hooks are supported: before save and before remove. Hooks are
+registered using the `ds_hook/3` predicate. Hook that fails or throws an
+exception will abort the current transaction. Transactions inside hooks
+are joined with the currently running transaction.
+
 ## Installation
+
+Requires SWI-Prolog 7.x.
 
     pack_install('http://packs.rlaanemets.com/docstore/docstore-*.tgz')
 
 ## Changelog
 
- * 2014-01 version 1.0.0 - switch to dicts, more tests, transactions.
- * 2013-12 versions 0.0.1/0.0.2 - docstore working with option lists.
+ * 2014-01-02 version 1.0.0 - switch to dicts, more tests, transactions.
+ * 2013-12-23 versions 0.0.1/0.0.2 - docstore working with option lists.
 
 ## API documentation
 
