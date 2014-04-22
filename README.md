@@ -84,10 +84,11 @@ are joined with the currently running transaction.
 
 Requires SWI-Prolog 7.x.
 
-    pack_install('http://packs.rlaanemets.com/docstore/docstore-*.tgz')
+    pack_install(docstore).
 
 ## Changelog
 
+ * 2014-04-22 version 1.0.1 - use dot notation instead of get_dict_ex/3.
  * 2014-01-02 version 1.0.0 - switch to dicts, more tests, transactions.
  * 2013-12-23 versions 0.0.1/0.0.2 - docstore working with option lists.
 
