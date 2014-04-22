@@ -35,7 +35,7 @@ test(insert_dict_id, [ setup(ds_open('test.db')),
     ds_close,
     ds_open('test.db'),
     ds_all(vehicle, [Vehicle]),
-    get_dict_ex('$id', Vehicle, Id).
+    Id = Vehicle.'$id'.
 
 test(find, [ setup(ds_open('test.db')),
         cleanup((ds_close, delete_file('test.db')))]):-
@@ -55,7 +55,7 @@ test(find_subset_keys, [ setup(ds_open('test.db')),
     ds_close,
     ds_open('test.db'),
     ds_find(vehicle, year=1926, [model], [Imperial]),
-    get_dict_ex(model, Imperial, imperial),
+    imperial = Imperial.model,
     \+ get_dict(make, Imperial, _).
 
 test(all_subset_keys, [ setup(ds_open('test.db')),
@@ -77,20 +77,20 @@ test(update, [ setup(ds_open('test.db')),
     ds_close,
     ds_open('test.db'),
     ds_all(vehicle, [Vehicle]),
-    get_dict_ex(year, Vehicle, 1962).
+    1962 = Vehicle.year.
 
 test(upsert, [ setup(ds_open('test.db')),
         cleanup((ds_close, delete_file('test.db')))]):-
     ds_insert(vehicle{year: 1926, make: chrysler, model: imperial}, Id),
     ds_all(vehicle, [Vehicle]),
-    get_dict_ex(year, Vehicle, 1926),
+    1926 = Vehicle.year,
     New = Vehicle.put(year, 1962),
     ds_upsert(New, NewId),
     ds_close,
     ds_open('test.db'),
     Id = NewId,
     ds_all(vehicle, [Updated]),
-    get_dict_ex(year, Updated, 1962).
+    1962 = Updated.year.
 
 test(get, [ setup(ds_open('test.db')),
         cleanup((ds_close, delete_file('test.db')))]):-
@@ -98,8 +98,8 @@ test(get, [ setup(ds_open('test.db')),
     ds_close,
     ds_open('test.db'),
     ds_get(Id, Vehicle),
-    get_dict_ex(model, Vehicle, imperial),
-    get_dict_ex(year, Vehicle, 1926),
+    imperial = Vehicle.model,
+    1926 = Vehicle.year,
     (   ds_get('non-existing', _)
     ->  fail
     ;   true).
@@ -122,7 +122,7 @@ test(remove_cond, [ setup(ds_open('test.db')),
     ds_close,
     ds_open('test.db'),
     ds_all(vehicle, [Vehicle]),
-    get_dict_ex(year, Vehicle, 1926).
+    1926 = Vehicle.year.
 
 test(remove_col, [ setup(ds_open('test.db')),
         cleanup((ds_close, delete_file('test.db')))]):-
@@ -150,10 +150,10 @@ test(col_add_key, [ setup(ds_open('test.db')),
     ds_insert(vehicle{year: 1953, make: chevrolet, model: corvette}),
     ds_col_add_key(vehicle, points, 0),
     ds_all(vehicle, [Vehicle1, Vehicle2]),
-    get_dict_ex(year, Vehicle1, 1926),
-    get_dict_ex(points, Vehicle1, 0),
-    get_dict_ex(year, Vehicle2, 1953),
-    get_dict_ex(points, Vehicle2, 0).
+    1926 = Vehicle1.year,
+    0 = Vehicle1.points,
+    1953 = Vehicle2.year,
+    0 = Vehicle2.points.
 
 test(col_remove_key, [ setup(ds_open('test.db')),
         cleanup((ds_close, delete_file('test.db')))]):-
@@ -201,8 +201,8 @@ test(rename_key, [ setup(ds_open('test.db')),
     ds_close,
     ds_open('test.db'),
     ds_all(vehicle, [Vehicle1, Vehicle2]),
-    get_dict_ex(y, Vehicle1, _),
-    get_dict_ex(y, Vehicle2, _),
+    _ = Vehicle1.y,
+    _ = Vehicle2.y,
     (   get_dict(year, Vehicle1, _)
     ->  fail
     ;   true),
@@ -221,7 +221,7 @@ test(save_hook, [ setup(ds_open('test.db')),
         cleanup((ds_close, delete_file('test.db')))]):-
     ds_insert(user{name: john}, Id),
     ds_get(Id, Doc),
-    get_dict_ex(key, Doc, test).
+    test = Doc.key.
 
 % Tests multiple save hooks on same collection.
 
@@ -239,8 +239,8 @@ test(save_hook_multi, [ setup(ds_open('test.db')),
         cleanup((ds_close, delete_file('test.db')))]):-
     ds_insert(multi{test: test}, Id),
     ds_get(Id, Doc),
-    get_dict_ex(a, Doc, 1),
-    get_dict_ex(b, Doc, 2).
+    1 = Doc.a,
+    2 = Doc.b.
 
 % Tests simple before_remove hook.
 
@@ -318,12 +318,12 @@ test(snapshot, [ setup(ds_open('snapshot.test.db')),
     ds_close,
     ds_open('snapshot.db'),
     ds_all(vehicle, [Vehicle1, Vehicle2]),
-    get_dict_ex(year, Vehicle1, 1926),
-    get_dict_ex(make, Vehicle1, chrysler),
-    get_dict_ex(model, Vehicle1, imperial),
-    get_dict_ex(year, Vehicle2, 1953),
-    get_dict_ex(make, Vehicle2, chevrolet),
-    get_dict_ex(model, Vehicle2, corvette).
+    1926 = Vehicle1.year,
+    chrysler = Vehicle1.make,
+    imperial = Vehicle1.model,
+    1953 = Vehicle2.year,
+    chevrolet = Vehicle2.make,
+    corvette = Vehicle2.model.
 
 test(snapshot_self, [ setup(ds_open('test.db')),
         cleanup((ds_close, delete_file('test.db')))]):-
@@ -333,12 +333,12 @@ test(snapshot_self, [ setup(ds_open('test.db')),
     ds_close,
     ds_open('test.db'),
     ds_all(vehicle, [Vehicle1, Vehicle2]),
-    get_dict_ex(year, Vehicle1, 1926),
-    get_dict_ex(make, Vehicle1, chrysler),
-    get_dict_ex(model, Vehicle1, imperial),
-    get_dict_ex(year, Vehicle2, 1953),
-    get_dict_ex(make, Vehicle2, chevrolet),
-    get_dict_ex(model, Vehicle2, corvette).
+    1926 = Vehicle1.year,
+    chrysler = Vehicle1.make,
+    imperial = Vehicle1.model,
+    1953 = Vehicle2.year,
+    chevrolet = Vehicle2.make,
+    corvette = Vehicle2.model.
 
 fail_pred:-
     ds_insert(vehicle{year: 1926, make: chrysler, model: imperial}),

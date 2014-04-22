@@ -297,7 +297,7 @@ run_before_save_goals([], Doc, Doc).
 
 ds_update(Doc):-
     must_be(nonvar, Doc),
-    get_dict_ex('$id', Doc, Id),
+    Id = Doc.'$id',
     (   col(Col, Id)
     ->  true
     ;   throw(error(no_such_doc(Id)))),
