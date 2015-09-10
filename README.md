@@ -10,6 +10,8 @@ works similar to [persistency.pl](http://www.swi-prolog.org/pldoc/doc/home/vnc/p
 except that the high-level interface is different (documents vs. predicates) and the library
 is thread-safe. The library supports transactions and hooks (`before_save`, `before_remove`).
 
+[![Build Status](https://travis-ci.org/rla/docstore.svg)](https://travis-ci.org/rla/docstore)
+
 ## Example usage
 
 Open database:
