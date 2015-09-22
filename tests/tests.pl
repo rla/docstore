@@ -123,10 +123,19 @@ test(get, [ setup(ds_open('test.db')),
     ds_insert(vehicle{year: 1926, make: chrysler, model: imperial}, Id),
     ds_close,
     ds_open('test.db'),
-    ds_get(Id, Vehicle),
+    ds_col_get(vehicle, Id, Vehicle),
     imperial = Vehicle.model,
     1926 = Vehicle.year,
-    (   ds_get('non-existing', _)
+    (   ds_col_get(vehicle, 'non-existing', _)
+    ->  fail
+    ;   true).
+
+test(get_wrong_col, [ setup(ds_open('test.db')),
+        cleanup((ds_close, delete_file('test.db')))]):-
+    ds_insert(vehicle{year: 1926, make: chrysler, model: imperial}, Id),
+    ds_close,
+    ds_open('test.db'),
+    (   ds_col_get(car, Id, _)
     ->  fail
     ;   true).
 
@@ -135,7 +144,7 @@ test(get_single_key, [ setup(ds_open('test.db')),
     ds_insert(vehicle{year: 1926, make: chrysler, model: imperial}, Id),
     ds_close,
     ds_open('test.db'),
-    ds_get(Id, model, Vehicle),
+    ds_col_get(vehicle, Id, model, Vehicle),
     imperial = Vehicle.model,
     \+ get_dict(make, Vehicle, _),
     \+ get_dict(year, Vehicle, _).
@@ -145,7 +154,7 @@ test(get_subset_keys, [ setup(ds_open('test.db')),
     ds_insert(vehicle{year: 1926, make: chrysler, model: imperial}, Id),
     ds_close,
     ds_open('test.db'),
-    ds_get(Id, [model, year], Vehicle),
+    ds_col_get(vehicle, Id, [model, year], Vehicle),
     imperial = Vehicle.model,
     Id = Vehicle.'$id',
     \+ get_dict(make, Vehicle, _).
@@ -155,7 +164,7 @@ test(get_empty_subset_keys, [ setup(ds_open('test.db')),
     ds_insert(vehicle{year: 1926, make: chrysler, model: imperial}, Id),
     ds_close,
     ds_open('test.db'),
-    ds_get(Id, [], Vehicle),
+    ds_col_get(vehicle, Id, [], Vehicle),
     Id = Vehicle.'$id',
     \+ get_dict(make, Vehicle, _),
     \+ get_dict(year, Vehicle, _),
@@ -286,7 +295,7 @@ add_key(In, Out):-
 test(save_hook, [ setup(ds_open('test.db')),
         cleanup((ds_close, delete_file('test.db')))]):-
     ds_insert(user{name: john}, Id),
-    ds_get(Id, Doc),
+    ds_col_get(user, Id, Doc),
     test = Doc.key.
 
 % Tests multiple save hooks on same collection.
@@ -304,7 +313,7 @@ add_b(In, Out):-
 test(save_hook_multi, [ setup(ds_open('test.db')),
         cleanup((ds_close, delete_file('test.db')))]):-
     ds_insert(multi{test: test}, Id),
-    ds_get(Id, Doc),
+    ds_col_get(multi, Id, Doc),
     1 = Doc.a,
     2 = Doc.b.
 

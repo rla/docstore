@@ -46,7 +46,7 @@ Query by condition:
 Update:
 
     ?- ds_update(vehicle{'$id':'23418d47-5835-41ff-a6b8-8748f3b2163e', year: 1954}).
-    ?- ds_get('23418d47-5835-41ff-a6b8-8748f3b2163e', Vehicle).
+    ?- ds_col_get(vehicle, '23418d47-5835-41ff-a6b8-8748f3b2163e', Vehicle).
     Vehicle = vehicle{'$id':'23418d47-5835-41ff-a6b8-8748f3b2163e',
         make:chevrolet, model:corvette, year:1954}.
 
@@ -99,6 +99,8 @@ Requires SWI-Prolog 7.x.
  * `ds_remove/1` is removed, provided untyped access, use `ds_col_remove/2`.
  * `ds_remove/2` is removed, use `ds_col_remove_cond/2`.
  * `ds_id/2` can be used to extract document id.
+ * `ds_get/2` and `ds_get/3` are removed, provided untyped access, use `ds_col_get/3`
+   and `ds_col_get/4`.
 
 ## API documentation
 

@@ -11,8 +11,8 @@
     ds_upsert/1,         % +Dict
     ds_upsert/2,         % +Dict, -Id
     ds_upsert/3,         % +Col, +Dict, -Id
-    ds_get/2,            % +Id, -Dict
-    ds_get/3,            % +Id, +Keys, -Dict
+    ds_col_get/3,        % +Col, +Id, -Dict
+    ds_col_get/4,        % +Col, +Id, +Keys, -Dict
     ds_all/2,            % +Col, -List
     ds_all/3,            % +Col, +Keys, -List
     ds_all_ids/2,        % +Col, -List
@@ -361,25 +361,29 @@ ds_upsert(Col, Doc, Id):-
     ->  ds_update(Doc)
     ;   ds_insert(Col, Doc, Id)).
 
-%! ds_get(+Id, -Doc) is semidet.
+%! ds_col_get(+Col, +Id, -Doc) is semidet.
 %
 % Retrieves entry with the given id.
 % Fails when the document with the given id
-% does not exist.
+% does not exist or is not in the given collection.
 
-ds_get(Id, Doc):-
+ds_col_get(Col, Id, Doc):-
+    must_be(atom, Col),
     must_be(atom, Id),
+    col(Col, Id),
     doc(Id, Doc).
 
-%! ds_get(+Id, +Keys, -Doc) is semidet.
+%! ds_col_get(+Col, +Id, +Keys, -Doc) is semidet.
 %
 % Retrieves entry with the given id.
 % Retrieves subset of properties. Fails
 % when the document with the given id does
-% not exist.
+% not exist or is not in the given collection.
 
-ds_get(Id, Keys, Doc):-
+ds_col_get(Col, Id, Keys, Doc):-
+    must_be(atom, Col),
     must_be(atom, Id),
+    col(Col, Id),
     doc(Id, Keys, Doc).
 
 %! ds_all(+Col, -List) is det.
