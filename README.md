@@ -52,7 +52,7 @@ Update:
 
 Remove:
 
-    ?- ds_remove('23418d47-5835-41ff-a6b8-8748f3b2163e').
+    ?- ds_col_remove(vehicle, '23418d47-5835-41ff-a6b8-8748f3b2163e').
     ?- ds_all(vehicle, List).
     List = [
         vehicle{'$id':'f3012622-cacb-4d7f-a22a-c36305274a80',
