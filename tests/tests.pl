@@ -165,17 +165,26 @@ test(remove, [ setup(ds_open('test.db')),
         cleanup((ds_close, delete_file('test.db')))]):-
     ds_insert(vehicle{year: 1926, make: chrysler, model: imperial}, Id),
     ds_all(vehicle, [_]),
-    ds_remove(Id),
+    ds_col_remove(vehicle, Id),
     ds_close,
     ds_open('test.db'),
     ds_all(vehicle, []).
+
+test(remove_wrong_col, [ setup(ds_open('test.db')),
+        cleanup((ds_close, delete_file('test.db')))]):-
+    ds_insert(vehicle{year: 1926, make: chrysler, model: imperial}, Id),
+    ds_all(vehicle, [_]),
+    catch((ds_col_remove(car, Id), fail), _, true),
+    ds_close,
+    ds_open('test.db'),
+    ds_all(vehicle, [_]).
 
 test(remove_cond, [ setup(ds_open('test.db')),
         cleanup((ds_close, delete_file('test.db')))]):-
     ds_insert(vehicle{year: 1926, make: chrysler, model: imperial}),
     ds_insert(vehicle{year: 1953, make: chevrolet, model: corvette}),
     ds_all(vehicle, [_, _]),
-    ds_remove(vehicle, make=chevrolet),
+    ds_col_remove_cond(vehicle, make=chevrolet),
     ds_close,
     ds_open('test.db'),
     ds_all(vehicle, [Vehicle]),
@@ -311,7 +320,7 @@ remove_test(Id):-
 test(remove_hook, [ setup((retractall(remove_check(_)), ds_open('test.db'))),
         cleanup((ds_close, delete_file('test.db')))]):-
     ds_insert(remove_hook_test{name: abc}, Id),
-    ds_remove(Id),
+    ds_col_remove(remove_hook_test, Id),
     remove_check(Id).
 
 % Tests remove hook with nested action.
@@ -332,7 +341,7 @@ test(remove_hook_nest, [ setup((retractall(remove_nest_check(_)), ds_open('test.
         cleanup((ds_close, delete_file('test.db')))]):-
     ds_insert(remove_nest{test: 123}, Id1),
     ds_insert(remove_hook_nest_test{name: abc}, Id2),
-    ds_remove(Id2),
+    ds_col_remove(remove_hook_nest_test, Id2),
     ds_close,
     ds_open('test.db'),
     ds_all(nest, []),

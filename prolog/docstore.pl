@@ -19,8 +19,8 @@
     ds_find/3,           % +Col, +Cond, -List
     ds_find/4,           % +Col, +Cond, +Keys, -List
     ds_collection/2,     % ?Id, ?Col
-    ds_remove/1,         % +Id
-    ds_remove/2,         % +Col, Cond
+    ds_col_remove/2,     % +Col, +Id
+    ds_col_remove_cond/2,% +Col, Cond
     ds_remove_col/1,     % +Col
     ds_remove_key/2,     % +Id, +Key
     ds_tuples/3,         % +Col, +Keys, -Values
@@ -543,16 +543,21 @@ doc_kv_pair(Id, Name, Name-Value):-
 ds_collection(Id, Col):-
     col(Col, Id).
 
-%! ds_remove(+Id) is det.
+%! ds_col_remove(+Col, +Id) is det.
 %
 % Removes the given document.
 % Does nothing when the document
 % does not exist. Runs `before_remove` hooks.
 
-ds_remove(Id):-
+ds_col_remove(Col, Id):-
     must_be(atom, Id),
-    debug(docstore, 'removing document ~p', [Id]),
-    ds_transactional(remove_unsafe(Id)).
+    must_be(atom, Col),
+    (   col(Actual, Id)
+    ->  (   Actual = Col
+        ->  debug(docstore, 'removing document ~p', [Id]),
+            ds_transactional(remove_unsafe(Id))
+        ;   throw(error(document_not_in(Col))))
+    ;   true).
 
 remove_unsafe(Id):-
     run_before_remove_hooks(Id),
@@ -576,14 +581,14 @@ run_before_remove_goals([Goal|Goals], Id):-
 
 run_before_remove_goals([], _).
 
-%! ds_remove(+Col, +Cond) is det.
+%! ds_col_remove_cond(+Col, +Cond) is det.
 %
 % Removes all documents from
 % the collection that match the
 % condition. Runs `before_remove` hooks.
 % Cond expressions are same as in ds_find/3.
 
-ds_remove(Col, Cond):-
+ds_col_remove_cond(Col, Cond):-
     must_be(atom, Col),
     findall(Id, (col(Col, Id), cond(Cond, Id)), Ids),
     ds_transactional(maplist(remove_unsafe, Ids)).
