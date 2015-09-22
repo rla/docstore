@@ -48,6 +48,39 @@ test(find, [ setup(ds_open('test.db')),
     ds_find(vehicle, year=1926, List),
     length(List, 1).
 
+test(find_cond_all, [ setup(ds_open('test.db')),
+        cleanup((ds_close, delete_file('test.db')))]):-
+    ds_insert(vehicle{year: 1926, make: chrysler, model: imperial}),
+    ds_insert(vehicle{year: 1953, make: chevrolet, model: corvette}),
+    ds_close,
+    ds_open('test.db'),
+    ds_all(vehicle, All),
+    length(All, 2),
+    ds_find(vehicle, year>1900, List),
+    length(List, 2).
+
+test(find_non_ground_cond, [ setup(ds_open('test.db')),
+        cleanup((ds_close, delete_file('test.db')))]):-
+    ds_insert(vehicle{year: 1926, make: chrysler, model: imperial}),
+    ds_insert(vehicle{year: 1953, make: chevrolet, model: corvette}),
+    ds_close,
+    ds_open('test.db'),
+    ds_all(vehicle, All),
+    length(All, 2),
+    catch((ds_find(vehicle, year=_, List), fail), _, true),
+    length(List, 1).
+
+test(find_invalid_cond, [ setup(ds_open('test.db')),
+        cleanup((ds_close, delete_file('test.db')))]):-
+    ds_insert(vehicle{year: 1926, make: chrysler, model: imperial}),
+    ds_insert(vehicle{year: 1953, make: chevrolet, model: corvette}),
+    ds_close,
+    ds_open('test.db'),
+    ds_all(vehicle, All),
+    length(All, 2),
+    catch((ds_find(vehicle, year*1, List), fail), _, true),
+    length(List, 1).
+
 test(find_subset_keys, [ setup(ds_open('test.db')),
         cleanup((ds_close, delete_file('test.db')))]):-
     ds_insert(vehicle{year: 1926, make: chrysler, model: imperial}),

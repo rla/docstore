@@ -432,6 +432,7 @@ ds_all_ids(Col, List):-
 
 ds_find(Col, Cond, List):-
     must_be(atom, Col),
+    must_be(ground, Cond),
     findall(Doc, cond_doc(Col, Cond, Doc), List).
 
 %! ds_find(+Col, +Cond, +Keys, -List) is semidet.
@@ -441,6 +442,7 @@ ds_find(Col, Cond, List):-
 ds_find(Col, Cond, Keys, List):-
     must_be(atom, Col),
     must_be(list(atom), Keys),
+    must_be(ground, Cond),
     findall(Doc, cond_doc(Col, Cond, Keys, Doc), List).
 
 cond_doc(Col, Cond, Dict):-
@@ -456,42 +458,45 @@ cond_doc(Col, Cond, Keys, Dict):-
 % Succeeds when condition is satisfied
 % on the given entity.
 
-cond(Name = Value, Id):-
+cond(Name = Value, Id):- !,
     eav(Id, Name, Value).
 
-cond(Name \= Comp, Id):-
+cond(Name \= Comp, Id):- !,
     eav(Id, Name, Value),
     Value \= Comp.
 
-cond(Name > Comp, Id):-
+cond(Name > Comp, Id):- !,
     eav(Id, Name, Value),
     Value > Comp.
 
-cond(Name < Comp, Id):-
+cond(Name < Comp, Id):- !,
     eav(Id, Name, Value),
     Value < Comp.
 
-cond(Name >= Comp, Id):-
+cond(Name >= Comp, Id):- !,
     eav(Id, Name, Value),
     Value >= Comp.
 
-cond(Name =< Comp, Id):-
+cond(Name =< Comp, Id):- !,
     eav(Id, Name, Value),
     Value =< Comp.
 
-cond(member(Item, Name), Id):-
+cond(member(Item, Name), Id):- !,
     eav(Id, Name, Value),
     memberchk(Item, Value).
 
-cond(','(Left, Right), Id):-
+cond(','(Left, Right), Id):- !,
     cond(Left, Id),
     cond(Right, Id).
 
-cond(';'(Left, _), Id):-
+cond(';'(Left, _), Id):- !,
     cond(Left, Id).
 
-cond(';'(_, Right), Id):-
+cond(';'(_, Right), Id):- !,
     cond(Right, Id).
+
+cond(Cond, _):-
+    throw(error(invalid_condition(Cond))).
 
 % Finds document by ID.
 
