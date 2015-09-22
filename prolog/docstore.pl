@@ -512,16 +512,22 @@ doc_kv_pairs(Id, Pairs):-
 % Finds document properties
 % with values. Subset of properties.
 
+doc_kv_pairs(Id, Key, Doc):-
+    atom(Key), !,
+    doc_kv_pairs(Id, [Key], Doc).
+
 doc_kv_pairs(Id, Keys, Pairs):-
-    Keys = [_|_],
+    (   key_list(Keys)
+    ->  true
+    ;   throw(error(invalid_key_set(Keys)))),
     findall(Pair, (
         member(Key, Keys),
         doc_kv_pair(Id, Key, Pair)
     ), Pairs).
 
-doc_kv_pairs(Id, Key, Doc):-
-    atom(Key),
-    doc_kv_pairs(Id, [Key], Doc).
+key_list([]).
+
+key_list([_|_]).
 
 doc_kv_pair(Id, Name-Value):-
     eav(Id, Name, Value).

@@ -58,6 +58,18 @@ test(find_subset_keys, [ setup(ds_open('test.db')),
     imperial = Imperial.model,
     \+ get_dict(make, Imperial, _).
 
+test(find_empty_subset_keys, [ setup(ds_open('test.db')),
+        cleanup((ds_close, delete_file('test.db')))]):-
+    ds_insert(vehicle{year: 1926, make: chrysler, model: imperial}),
+    ds_insert(vehicle{year: 1953, make: chevrolet, model: corvette}),
+    ds_close,
+    ds_open('test.db'),
+    ds_find(vehicle, year=1926, [], [Imperial]),
+    \+ get_dict(model, Imperial, _),
+    \+ get_dict(year, Imperial, _),
+    \+ get_dict(make, Imperial, _),
+    get_dict('$id', Imperial, _).
+
 test(all_subset_keys, [ setup(ds_open('test.db')),
         cleanup((ds_close, delete_file('test.db')))]):-
     ds_insert(vehicle{year: 1926, make: chrysler, model: imperial}),
@@ -69,6 +81,20 @@ test(all_subset_keys, [ setup(ds_open('test.db')),
     \+ get_dict(make, Vehicle2, _),
     get_dict(year, Vehicle1, 1926),
     get_dict(year, Vehicle2, 1953).
+
+test(all_empty_subset_keys, [ setup(ds_open('test.db')),
+        cleanup((ds_close, delete_file('test.db')))]):-
+    ds_insert(vehicle{year: 1926, make: chrysler, model: imperial}),
+    ds_insert(vehicle{year: 1953, make: chevrolet, model: corvette}),
+    ds_close,
+    ds_open('test.db'),
+    ds_all(vehicle, [], [Vehicle1, Vehicle2]),
+    \+ get_dict(make, Vehicle1, _),
+    \+ get_dict(make, Vehicle2, _),
+    \+ get_dict(year, Vehicle1, 1926),
+    \+ get_dict(year, Vehicle2, 1953),
+    get_dict('$id', Vehicle1, _),
+    get_dict('$id', Vehicle2, _).
 
 test(update, [ setup(ds_open('test.db')),
         cleanup((ds_close, delete_file('test.db')))]):-
@@ -103,6 +129,37 @@ test(get, [ setup(ds_open('test.db')),
     (   ds_get('non-existing', _)
     ->  fail
     ;   true).
+
+test(get_single_key, [ setup(ds_open('test.db')),
+        cleanup((ds_close, delete_file('test.db')))]):-
+    ds_insert(vehicle{year: 1926, make: chrysler, model: imperial}, Id),
+    ds_close,
+    ds_open('test.db'),
+    ds_get(Id, model, Vehicle),
+    imperial = Vehicle.model,
+    \+ get_dict(make, Vehicle, _),
+    \+ get_dict(year, Vehicle, _).
+
+test(get_subset_keys, [ setup(ds_open('test.db')),
+        cleanup((ds_close, delete_file('test.db')))]):-
+    ds_insert(vehicle{year: 1926, make: chrysler, model: imperial}, Id),
+    ds_close,
+    ds_open('test.db'),
+    ds_get(Id, [model, year], Vehicle),
+    imperial = Vehicle.model,
+    Id = Vehicle.'$id',
+    \+ get_dict(make, Vehicle, _).
+
+test(get_empty_subset_keys, [ setup(ds_open('test.db')),
+        cleanup((ds_close, delete_file('test.db')))]):-
+    ds_insert(vehicle{year: 1926, make: chrysler, model: imperial}, Id),
+    ds_close,
+    ds_open('test.db'),
+    ds_get(Id, [], Vehicle),
+    Id = Vehicle.'$id',
+    \+ get_dict(make, Vehicle, _),
+    \+ get_dict(year, Vehicle, _),
+    \+ get_dict(model, Vehicle, _).
 
 test(remove, [ setup(ds_open('test.db')),
         cleanup((ds_close, delete_file('test.db')))]):-
