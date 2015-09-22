@@ -29,7 +29,8 @@
     ds_col_rename/2,     % +Col, +ColNew
     ds_col_rename_key/3, % +Col, +Key, +KeyNew
     ds_transactional/1,  % +Goal
-    ds_uuid/1            % -Uuid
+    ds_uuid/1,           % -Uuid
+    ds_id/2              % +Doc, -Id
 ]).
 
 /** <module> Document-oriented database
@@ -830,6 +831,16 @@ discard:-
         retractall(tx(_)),
         N1 is N - 1,
         assertz(tx(N1))).
+
+%! ds_id(+Doc, -Id) is det.
+%
+% Extracts document id from the
+% given document. Equivalent to Doc.'$id'.
+
+ds_id(Doc, Id):-
+    (   get_dict('$id', Doc, Id)
+    ->  true
+    ;   throw(error(doc_has_no_id(Doc)))).
 
 %! ds_uuid(-Id) is det.
 %

@@ -98,6 +98,7 @@ Requires SWI-Prolog 7.x.
 
  * `ds_remove/1` is removed, provided untyped access, use `ds_col_remove/2`.
  * `ds_remove/2` is removed, use `ds_col_remove_cond/2`.
+ * `ds_id/2` can be used to extract document id.
 
 ## API documentation
 

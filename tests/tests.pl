@@ -406,6 +406,12 @@ test(snapshot_self, [ setup(ds_open('test.db')),
     chevrolet = Vehicle2.make,
     corvette = Vehicle2.model.
 
+test(ds_id):-
+    ds_id(_{'$id': abc}, abc).
+
+test(ds_id_missing):-
+    catch((ds_id(_{'id': abc}, _), fail), _, true).
+
 fail_pred:-
     ds_insert(vehicle{year: 1926, make: chrysler, model: imperial}),
     fail.
