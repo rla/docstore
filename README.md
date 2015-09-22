@@ -98,6 +98,10 @@ Requires SWI-Prolog 7.x.
 
 See <http://packs.rlaanemets.com/docstore/doc/>.
 
+## Debugging
+
+Enable debugging with `debug(docstore)` on the console.
+
 ## Known issues
 
  * Disk representation is not very compact. This could be improved.
