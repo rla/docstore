@@ -107,6 +107,10 @@ Enable debugging with `debug(docstore)` on the console.
  * Disk representation is not very compact. This could be improved.
  * `before_save` hooks are only given updated values not whole document. This might change.
 
+## Bug reports/feature requests
+
+Please send bug reports/feature request through the GitHub project [page](https://github.com/rla/docstore).
+
 ## License
 
 The MIT License.
