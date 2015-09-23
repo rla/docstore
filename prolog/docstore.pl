@@ -8,6 +8,7 @@
     ds_insert/2,         % +Dict, -Id
     ds_insert/3,         % +Col, +Dict, -Id
     ds_update/1,         % +Dict
+    ds_update/2,         % +Id, +Dict
     ds_upsert/1,         % +Dict
     ds_upsert/2,         % +Dict, -Id
     ds_upsert/3,         % +Col, +Dict, -Id
@@ -302,6 +303,19 @@ run_before_save_goals([], Doc, Doc).
 ds_update(Doc):-
     must_be(dict, Doc),
     ds_id(Doc, Id),
+    (   col(Col, Id)
+    ->  true
+    ;   throw(error(no_such_doc(Id)))),
+    ds_transactional(update_unsafe(Col, Id, Doc)).
+
+%! ds_update(+Id, +Doc) is det.
+%
+% Updates the given document. The document
+% id inside the document is ignored.
+
+ds_update(Id, Doc):-
+    must_be(dict, Doc),
+    must_be(atom, Id),
     (   col(Col, Id)
     ->  true
     ;   throw(error(no_such_doc(Id)))),

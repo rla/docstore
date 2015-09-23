@@ -164,6 +164,15 @@ test(update, [ setup(ds_open('test.db')),
     ds_all(vehicle, [Vehicle]),
     1962 = Vehicle.year.
 
+test(update_with_id, [ setup(ds_open('test.db')),
+        cleanup((ds_close, delete_file('test.db')))]):-
+    ds_insert(vehicle{year: 1926, make: chrysler, model: imperial}, Id),
+    ds_update(Id, vehicle{year: 1962}),
+    ds_close,
+    ds_open('test.db'),
+    ds_all(vehicle, [Vehicle]),
+    1962 = Vehicle.year.
+
 test(upsert, [ setup(ds_open('test.db')),
         cleanup((ds_close, delete_file('test.db')))]):-
     ds_insert(vehicle{year: 1926, make: chrysler, model: imperial}, Id),
