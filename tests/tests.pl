@@ -454,6 +454,14 @@ test(ds_id):-
 test(ds_id_missing):-
     catch((ds_id(_{'id': abc}, _), fail), _, true).
 
+test(ds_set_id):-
+    ds_set_id(_{a: abc}, '111-222', Out),
+    Out.'$id' = '111-222'.
+
+test(ds_set_id_existing):-
+    ds_set_id(_{'$id': abc}, '111-222', Out),
+    Out.'$id' = '111-222'.
+
 fail_pred:-
     ds_insert(vehicle{year: 1926, make: chrysler, model: imperial}),
     fail.

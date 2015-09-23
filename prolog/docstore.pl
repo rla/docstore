@@ -30,7 +30,8 @@
     ds_col_rename_key/3, % +Col, +Key, +KeyNew
     ds_transactional/1,  % +Goal
     ds_uuid/1,           % -Uuid
-    ds_id/2              % +Doc, -Id
+    ds_id/2,             % +Doc, -Id
+    ds_set_id/3          % +In, +Id, -Out
 ]).
 
 /** <module> Document-oriented database
@@ -243,6 +244,7 @@ ds_insert(Doc):-
 % name is taken from dict tag.
 
 ds_insert(Doc, Id):-
+    must_be(dict, Doc),
     is_dict(Doc, Col),
     ds_insert(Col, Doc, Id).
 
@@ -297,8 +299,8 @@ run_before_save_goals([], Doc, Doc).
 % when no document with the given Id exists.
 
 ds_update(Doc):-
-    must_be(nonvar, Doc),
-    Id = Doc.'$id',
+    must_be(dict, Doc),
+    ds_id(Doc, Id),
     (   col(Col, Id)
     ->  true
     ;   throw(error(no_such_doc(Id)))),
@@ -850,6 +852,17 @@ ds_id(Doc, Id):-
     (   get_dict('$id', Doc, Id)
     ->  true
     ;   throw(error(doc_has_no_id(Doc)))).
+
+%! ds_set_id(+In, +Id, -Out) is det.
+%
+% Sets the document id. Throws error
+% when the document is not a dict or
+% id is not an atom.
+
+ds_set_id(In, Id, Out):-
+    must_be(dict, In),
+    must_be(atom, Id),
+    Out = In.put('$id', Id).
 
 %! ds_uuid(-Id) is det.
 %
