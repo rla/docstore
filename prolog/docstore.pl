@@ -881,8 +881,8 @@ discard:-
 % given document. Equivalent to Doc.'$id'.
 
 ds_id(Doc, Id):-
-    (   get_dict('$id', Doc, Id)
-    ->  true
+    (   get_dict('$id', Doc, Actual)
+    ->  Id = Actual
     ;   throw(error(doc_has_no_id(Doc)))).
 
 %! ds_set_id(+In, +Id, -Out) is det.
