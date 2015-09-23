@@ -11,6 +11,7 @@
     ds_upsert/1,         % +Dict
     ds_upsert/2,         % +Dict, -Id
     ds_upsert/3,         % +Col, +Dict, -Id
+    ds_move/3,           % +Col, +Id, +Col
     ds_col_get/3,        % +Col, +Id, -Dict
     ds_col_get/4,        % +Col, +Id, +Keys, -Dict
     ds_all/2,            % +Col, -List
@@ -347,7 +348,7 @@ ds_upsert(Doc):-
 % as collection name when inserting.
 
 ds_upsert(Doc, Id):-
-    must_be(nonvar, Doc),
+    must_be(dict, Doc),
     (   get_dict('$id', Doc, Id)
     ->  ds_update(Doc)
     ;   ds_insert(Doc, Id)).
@@ -358,10 +359,27 @@ ds_upsert(Doc, Id):-
 
 ds_upsert(Col, Doc, Id):-
     must_be(atom, Col),
-    must_be(nonvar, Doc),
+    must_be(dict, Doc),
     (   get_dict('$id', Doc, Id)
     ->  ds_update(Doc)
     ;   ds_insert(Col, Doc, Id)).
+
+%! ds_move(+Col, +Id, +NewCol) is det.
+%
+% Moves the given document into
+% the new collection. Throws error
+% when the document does not exist.
+
+ds_move(Col, Id, NewCol):-
+    must_be(atom, Id),
+    must_be(atom, Col),
+    must_be(atom, NewCol),
+    (   col(Col, Id)
+    ->  ds_transactional((
+            run(retractall(col(_, Id))),
+            run(assertz(col(NewCol, Id)))
+        ))
+    ;   throw(error(no_such_doc_in(Id, Col)))).
 
 %! ds_col_get(+Col, +Id, -Doc) is semidet.
 %

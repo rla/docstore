@@ -37,6 +37,32 @@ test(insert_dict_id, [ setup(ds_open('test.db')),
     ds_all(vehicle, [Vehicle]),
     Id = Vehicle.'$id'.
 
+test(move, [ setup(ds_open('test.db')),
+        cleanup((ds_close, delete_file('test.db')))]):-
+    ds_insert(vehicle{year: 1926, make: chrysler, model: imperial}),
+    ds_insert(vehicle{year: 1953, make: chevrolet, model: corvette}, Id),
+    ds_close,
+    ds_open('test.db'),
+    ds_all(vehicle, All),
+    length(All, 2),
+    ds_move(vehicle, Id, car),
+    ds_close,
+    ds_open('test.db'),
+    ds_all(vehicle, Vehicles),
+    length(Vehicles, 1),
+    ds_all(car, Cars),
+    length(Cars, 1).
+
+test(move_wrong_collection, [ setup(ds_open('test.db')),
+        cleanup((ds_close, delete_file('test.db')))]):-
+    ds_insert(vehicle{year: 1926, make: chrysler, model: imperial}),
+    ds_insert(vehicle{year: 1953, make: chevrolet, model: corvette}, Id),
+    ds_close,
+    ds_open('test.db'),
+    ds_all(vehicle, All),
+    length(All, 2),
+    catch((ds_move(bicycle, Id, car), fail), _, true).
+
 test(find, [ setup(ds_open('test.db')),
         cleanup((ds_close, delete_file('test.db')))]):-
     ds_insert(vehicle{year: 1926, make: chrysler, model: imperial}),
