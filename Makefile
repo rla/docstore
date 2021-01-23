@@ -1,6 +1,6 @@
 version:=$(shell swipl -q -s pack -g 'version(V),writeln(V)' -t halt)
 packfile=docstore-$(version).tgz
-remote=www-data@packs.rlaanemets.com:/sites/packs.rlaanemets.com/public/docstore
+remote=raivo@infdot.com:/files/infdot/infdot/packs/docstore
 
 test:
 	swipl -s tests/tests.pl -g run_tests,halt -t 'halt(1)'
