@@ -105,7 +105,7 @@ close_unsafe:-
     clean,
     debug(docstore, 'database is closed', []).
 
-:- dynamic(load_tx_begin).
+:- dynamic(load_tx_begin/0).
 
 % Loads database contents from
 % the given file if it exists.

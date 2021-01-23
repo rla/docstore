@@ -90,6 +90,7 @@ Requires SWI-Prolog 7.x.
 
 ## Changelog
 
+ * 2021-01-23 version 2.0.2 - fix `load_tx_begin` not being a predicate indicator.
  * 2014-04-22 version 1.0.1 - use dot notation instead of get_dict_ex/3.
  * 2014-01-02 version 1.0.0 - switch to dicts, more tests, transactions.
  * 2013-12-23 versions 0.0.1/0.0.2 - docstore working with option lists.
